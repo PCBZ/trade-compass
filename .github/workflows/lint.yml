@@ -27,6 +27,9 @@ jobs:
       - name: Validate atlas
         run: cd terraform/atlas && terraform init -backend=false && terraform validate
 
+      - name: Validate cloud_run
+        run: cd terraform/cloud_run && terraform init -backend=false && terraform validate
+
   shell:
     name: Shell
     runs-on: ubuntu-latest

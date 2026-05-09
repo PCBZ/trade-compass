@@ -1,0 +1,80 @@
+terraform {
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 5.0"
+    }
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.0"
+    }
+  }
+}
+
+provider "google" {
+  project = var.gcp_project_id
+  region  = var.region
+}
+
+# ── Artifact Registry ─────────────────────────────────────────
+resource "google_artifact_registry_repository" "api" {
+  repository_id = "trade-compass"
+  format        = "DOCKER"
+  location      = var.region
+}
+
+locals {
+  image = "${var.region}-docker.pkg.dev/${var.gcp_project_id}/${google_artifact_registry_repository.api.repository_id}/api:latest"
+}
+
+# ── Build and push image ──────────────────────────────────────
+resource "null_resource" "build_push" {
+  triggers = {
+    dockerfile   = filemd5("${path.root}/../../api/Dockerfile")
+    main         = filemd5("${path.root}/../../api/main.py")
+    requirements = filemd5("${path.root}/../../api/requirements.txt")
+  }
+
+  provisioner "local-exec" {
+    command = "docker build --platform linux/amd64 -t ${local.image} ${path.root}/../../api && docker push ${local.image}"
+  }
+
+  depends_on = [google_artifact_registry_repository.api]
+}
+
+# ── Service account ───────────────────────────────────────────
+resource "google_service_account" "api" {
+  account_id   = "trade-compass-api"
+  display_name = "trade-compass API Cloud Run SA"
+}
+
+# ── Cloud Run service ─────────────────────────────────────────
+resource "google_cloud_run_v2_service" "api" {
+  name     = "trade-compass-api"
+  location = var.region
+
+  template {
+    service_account = google_service_account.api.email
+
+    containers {
+      image = local.image
+
+      resources {
+        limits = {
+          memory = "512Mi"
+          cpu    = "1"
+        }
+      }
+    }
+  }
+
+  depends_on = [null_resource.build_push]
+}
+
+# ── Allow unauthenticated (API key auth added in task #7) ─────
+resource "google_cloud_run_v2_service_iam_member" "public" {
+  name     = google_cloud_run_v2_service.api.name
+  location = var.region
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}
