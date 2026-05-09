@@ -1,0 +1,39 @@
+name: Lint
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  terraform:
+    name: Terraform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Format check
+        run: terraform fmt -check -recursive terraform/
+
+      - name: Validate bootstrap
+        run: cd terraform/bootstrap && terraform init -backend=false && terraform validate
+
+      - name: Validate compute_engine
+        run: cd terraform/compute_engine && terraform init -backend=false && terraform validate
+
+      - name: Validate atlas
+        run: cd terraform/atlas && terraform init -backend=false && terraform validate
+
+  shell:
+    name: Shell
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ShellCheck
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: "./terraform"

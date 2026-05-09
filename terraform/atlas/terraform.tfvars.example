@@ -1,0 +1,5 @@
+atlas_public_key  = "your-atlas-api-public-key"
+atlas_private_key = "your-atlas-api-private-key"
+atlas_org_id      = "your-atlas-org-id"
+db_username       = "trade-compass-api"
+db_password       = "your-db-password"
