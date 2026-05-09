@@ -8,7 +8,7 @@ if [ ! -f "${ROOT_DIR}/.env" ]; then
   echo "Error: .env file not found at repo root."
   exit 1
 fi
-# shellcheck source=../.env
+# shellcheck source=/dev/null
 source "${ROOT_DIR}/.env"
 PROJECT_ID=${GCP_PROJECT_ID:?"GCP_PROJECT_ID is not set in .env"}
 BUCKET="trade-compass-tfstate-${PROJECT_ID}"
