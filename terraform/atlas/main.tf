@@ -25,7 +25,7 @@ resource "mongodbatlas_cluster" "main" {
 
   provider_name               = "TENANT"
   backing_provider_name       = "GCP"
-  provider_region_name        = "US_EAST_4"
+  provider_region_name        = "US_WEST_2"
   provider_instance_size_name = "M0"
 }
 
