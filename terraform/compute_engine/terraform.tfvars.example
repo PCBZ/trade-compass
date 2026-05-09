@@ -1,0 +1,4 @@
+gcp_project_id  = "your-gcp-project-id"
+region          = "us-west1"
+zone            = "us-west1-b"
+ssh_allowed_ips = ["0.0.0.0/0"]

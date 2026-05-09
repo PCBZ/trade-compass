@@ -33,6 +33,12 @@ resource "google_compute_firewall" "allow_ssh" {
   target_tags   = ["trade-compass"]
 }
 
+# ── Static external IP ────────────────────────────────────────
+resource "google_compute_address" "trade_compass" {
+  name   = "trade-compass-ip"
+  region = var.region
+}
+
 # ── Compute Engine instance (e2-micro, free tier) ─────────────
 resource "google_compute_instance" "trade_compass" {
   name         = "trade-compass"
@@ -49,7 +55,9 @@ resource "google_compute_instance" "trade_compass" {
 
   network_interface {
     network = "default"
-    access_config {}
+    access_config {
+      nat_ip = google_compute_address.trade_compass.address
+    }
   }
 
   service_account {

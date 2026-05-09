@@ -33,8 +33,7 @@ variable "db_password" {
   sensitive   = true
 }
 
-variable "allowed_ips" {
-  description = "List of IPs allowed to connect to Atlas (GCP VM + Cloud Run egress IPs)"
-  type        = list(string)
-  default     = []
+variable "tfstate_bucket" {
+  description = "GCS bucket name for Terraform remote state (from bootstrap output)"
+  type        = string
 }

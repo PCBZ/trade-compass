@@ -12,6 +12,15 @@ provider "mongodbatlas" {
   private_key = var.atlas_private_key
 }
 
+# ── Read compute_engine state to get static IP ────────────────
+data "terraform_remote_state" "compute_engine" {
+  backend = "gcs"
+  config = {
+    bucket = var.tfstate_bucket
+    prefix = "compute_engine"
+  }
+}
+
 # ── Project ───────────────────────────────────────────────────
 resource "mongodbatlas_project" "trade_compass" {
   name   = var.project_name
@@ -24,7 +33,7 @@ resource "mongodbatlas_cluster" "main" {
   name       = "trade-compass"
 
   provider_name               = "TENANT"
-  backing_provider_name       = "GCP"
+  backing_provider_name       = "AWS"
   provider_region_name        = "US_WEST_2"
   provider_instance_size_name = "M0"
 }
@@ -42,10 +51,9 @@ resource "mongodbatlas_database_user" "api" {
   }
 }
 
-# ── IP access list ────────────────────────────────────────────
-resource "mongodbatlas_project_ip_access_list" "allowed" {
-  for_each   = toset(var.allowed_ips)
+# ── IP access list (auto-read from compute_engine state) ──────
+resource "mongodbatlas_project_ip_access_list" "compute_engine" {
   project_id = mongodbatlas_project.trade_compass.id
-  ip_address = each.value
-  comment    = "Allowed IP"
+  ip_address = data.terraform_remote_state.compute_engine.outputs.external_ip
+  comment    = "Compute Engine static IP"
 }

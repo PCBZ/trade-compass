@@ -4,8 +4,8 @@ output "instance_name" {
 }
 
 output "external_ip" {
-  description = "External IP of the instance — add this to Atlas allowed_ips"
-  value       = google_compute_instance.trade_compass.network_interface[0].access_config[0].nat_ip
+  description = "Static external IP — automatically read by atlas module"
+  value       = google_compute_address.trade_compass.address
 }
 
 output "service_account_email" {
