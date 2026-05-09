@@ -1,7 +1,16 @@
 #!/bin/bash
 set -e
 
-PROJECT_ID=$(grep gcp_project_id compute_engine/terraform.tfvars | cut -d'"' -f2)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(dirname "${SCRIPT_DIR}")"
+
+if [ ! -f "${ROOT_DIR}/.env" ]; then
+  echo "Error: .env file not found at repo root."
+  exit 1
+fi
+# shellcheck source=../.env
+source "${ROOT_DIR}/.env"
+PROJECT_ID=${GCP_PROJECT_ID:?"GCP_PROJECT_ID is not set in .env"}
 BUCKET="trade-compass-tfstate-${PROJECT_ID}"
 
 echo "=== Step 1: Bootstrap (GCS bucket) ==="
