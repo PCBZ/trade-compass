@@ -27,6 +27,31 @@ jobs:
       - name: Validate atlas
         run: cd terraform/atlas && terraform init -backend=false && terraform validate
 
+      - name: Validate cloud_run
+        run: cd terraform/cloud_run && terraform init -backend=false && terraform validate
+
+  python:
+    name: Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install dependencies
+        run: pip install -r api/requirements-dev.txt
+
+      - name: Lint
+        run: ruff check api/src/
+
+      - name: Format check
+        run: ruff format --check api/src/
+
+      - name: Test
+        run: cd api && pytest tests/ -v
+
   shell:
     name: Shell
     runs-on: ubuntu-latest

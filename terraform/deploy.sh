@@ -31,4 +31,10 @@ terraform init -backend-config="bucket=${BUCKET}" -backend-config="prefix=atlas"
 terraform apply -auto-approve -var="tfstate_bucket=${BUCKET}"
 cd ..
 
+echo "=== Step 4: Cloud Run ==="
+cd cloud_run
+terraform init -backend-config="bucket=${BUCKET}" -backend-config="prefix=cloud_run"
+terraform apply -auto-approve -var="gcp_project_id=${PROJECT_ID}"
+cd ..
+
 echo "=== Done ==="
