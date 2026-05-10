@@ -8,6 +8,10 @@ terraform {
       source  = "hashicorp/null"
       version = "~> 3.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
+    }
   }
 }
 
@@ -58,8 +62,33 @@ resource "google_secret_manager_secret" "mongodb_uri" {
   }
 }
 
+# ── Secret: API Key ───────────────────────────────────────────
+resource "random_password" "api_key" {
+  length  = 32
+  special = false
+}
+
+resource "google_secret_manager_secret" "api_key" {
+  secret_id = "trade-compass-api-key"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "api_key" {
+  secret      = google_secret_manager_secret.api_key.id
+  secret_data = random_password.api_key.result
+}
+
 resource "google_secret_manager_secret_iam_member" "api_secret_access" {
   secret_id = google_secret_manager_secret.mongodb_uri.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.api.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "api_key_access" {
+  secret_id = google_secret_manager_secret.api_key.id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.api.email}"
 }
@@ -85,6 +114,16 @@ resource "google_cloud_run_v2_service" "api" {
         }
       }
 
+      env {
+        name = "API_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.api_key.secret_id
+            version = "latest"
+          }
+        }
+      }
+
       resources {
         limits = {
           memory = "512Mi"
@@ -94,10 +133,10 @@ resource "google_cloud_run_v2_service" "api" {
     }
   }
 
-  depends_on = [null_resource.build_push, google_secret_manager_secret_iam_member.api_secret_access]
+  depends_on = [null_resource.build_push, google_secret_manager_secret_iam_member.api_secret_access, google_secret_manager_secret_iam_member.api_key_access]
 }
 
-# ── Allow unauthenticated (API key auth added in task #7) ─────
+# ── Allow unauthenticated (auth handled by X-API-Key header) ──
 resource "google_cloud_run_v2_service_iam_member" "public" {
   name     = google_cloud_run_v2_service.api.name
   location = var.region
