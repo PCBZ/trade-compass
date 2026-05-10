@@ -35,6 +35,8 @@ async def list_holdings():
 )
 async def upsert_holdings(holdings: list[Holding]):
     """Upsert a batch of positions by symbol. Called by the Futu sync script."""
+    if not holdings:
+        return {"upserted": 0}
     db = get_db()
     ops = [
         UpdateOne({"symbol": h.symbol}, {"$set": h.model_dump()}, upsert=True)

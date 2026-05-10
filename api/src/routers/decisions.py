@@ -35,6 +35,7 @@ async def get_decision(symbol: str):
 )
 async def save_decision(decision: Decision):
     """Persist a new decision produced by the LangGraph agent."""
+    decision.symbol = decision.symbol.upper()
     db = get_db()
     await db.decisions.insert_one(decision.model_dump())
     return {"saved": decision.symbol}
