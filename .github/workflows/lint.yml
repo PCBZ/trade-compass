@@ -30,6 +30,25 @@ jobs:
       - name: Validate cloud_run
         run: cd terraform/cloud_run && terraform init -backend=false && terraform validate
 
+  python:
+    name: Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install ruff
+        run: pip install ruff==0.6.0
+
+      - name: Lint
+        run: ruff check api/src/
+
+      - name: Format check
+        run: ruff format --check api/src/
+
   shell:
     name: Shell
     runs-on: ubuntu-latest
