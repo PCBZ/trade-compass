@@ -30,9 +30,10 @@ locals {
 # ── Build and push image ──────────────────────────────────────
 resource "null_resource" "build_push" {
   triggers = {
-    dockerfile   = filemd5("${path.root}/../../api/Dockerfile")
-    main         = filemd5("${path.root}/../../api/main.py")
-    requirements = filemd5("${path.root}/../../api/requirements.txt")
+    src_hash = sha1(join("", [
+      for f in sort(fileset("${path.root}/../../api", "**")) :
+      filesha1("${path.root}/../../api/${f}")
+    ]))
   }
 
   provisioner "local-exec" {
@@ -48,6 +49,21 @@ resource "google_service_account" "api" {
   display_name = "trade-compass API Cloud Run SA"
 }
 
+# ── Secret: MongoDB URI ───────────────────────────────────────
+resource "google_secret_manager_secret" "mongodb_uri" {
+  secret_id = "trade-compass-mongodb-uri"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_iam_member" "api_secret_access" {
+  secret_id = google_secret_manager_secret.mongodb_uri.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.api.email}"
+}
+
 # ── Cloud Run service ─────────────────────────────────────────
 resource "google_cloud_run_v2_service" "api" {
   name     = "trade-compass-api"
@@ -59,6 +75,16 @@ resource "google_cloud_run_v2_service" "api" {
     containers {
       image = local.image
 
+      env {
+        name = "MONGODB_URI"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.mongodb_uri.secret_id
+            version = "latest"
+          }
+        }
+      }
+
       resources {
         limits = {
           memory = "512Mi"
@@ -68,7 +94,7 @@ resource "google_cloud_run_v2_service" "api" {
     }
   }
 
-  depends_on = [null_resource.build_push]
+  depends_on = [null_resource.build_push, google_secret_manager_secret_iam_member.api_secret_access]
 }
 
 # ── Allow unauthenticated (API key auth added in task #7) ─────
