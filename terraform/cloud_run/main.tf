@@ -53,6 +53,13 @@ resource "google_service_account" "api" {
   display_name = "trade-compass API Cloud Run SA"
 }
 
+resource "google_artifact_registry_repository_iam_member" "api_image_pull" {
+  location   = var.region
+  repository = google_artifact_registry_repository.api.repository_id
+  role       = "roles/artifactregistry.reader"
+  member     = "serviceAccount:${google_service_account.api.email}"
+}
+
 # ── Secret: MongoDB URI ───────────────────────────────────────
 resource "google_secret_manager_secret" "mongodb_uri" {
   secret_id = "trade-compass-mongodb-uri"

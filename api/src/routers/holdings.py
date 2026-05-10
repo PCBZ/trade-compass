@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+from pymongo import UpdateOne
 
 from database import get_db
 from models import Holding
@@ -35,10 +36,9 @@ async def list_holdings():
 async def upsert_holdings(holdings: list[Holding]):
     """Upsert a batch of positions by symbol. Called by the Futu sync script."""
     db = get_db()
-    for h in holdings:
-        await db.holdings.update_one(
-            {"symbol": h.symbol},
-            {"$set": h.model_dump()},
-            upsert=True,
-        )
+    ops = [
+        UpdateOne({"symbol": h.symbol}, {"$set": h.model_dump()}, upsert=True)
+        for h in holdings
+    ]
+    await db.holdings.bulk_write(ops)
     return {"upserted": len(holdings)}

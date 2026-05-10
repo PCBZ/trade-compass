@@ -5,6 +5,8 @@ from models import Preferences
 
 router = APIRouter(prefix="/preferences", tags=["preferences"])
 
+_SINGLETON_ID = "singleton"
+
 _example = {
     "risk_tolerance": "medium",
     "sectors": ["tech", "energy"],
@@ -19,7 +21,7 @@ _example = {
 async def get_preferences():
     """Return user investment preferences. Returns defaults if not yet configured."""
     db = get_db()
-    doc = await db.preferences.find_one({}, {"_id": 0})
+    doc = await db.preferences.find_one({"_id": _SINGLETON_ID}, {"_id": 0})
     return doc or Preferences().model_dump()
 
 
@@ -30,5 +32,7 @@ async def get_preferences():
 async def update_preferences(prefs: Preferences):
     """Replace user investment preferences (singleton document)."""
     db = get_db()
-    await db.preferences.update_one({}, {"$set": prefs.model_dump()}, upsert=True)
+    await db.preferences.update_one(
+        {"_id": _SINGLETON_ID}, {"$set": prefs.model_dump()}, upsert=True
+    )
     return prefs
