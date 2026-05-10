@@ -40,14 +40,17 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Install ruff
-        run: pip install ruff==0.6.0
+      - name: Install dependencies
+        run: pip install -r api/requirements-dev.txt
 
       - name: Lint
         run: ruff check api/src/
 
       - name: Format check
         run: ruff format --check api/src/
+
+      - name: Test
+        run: cd api && pytest tests/ -v
 
   shell:
     name: Shell
