@@ -2,12 +2,13 @@
 
 import logging
 import os
+from pathlib import Path
 
 import httpx
 from dotenv import load_dotenv
 from futu import OpenSecTradeContext, RET_OK, TrdEnv, TrdMarket
 
-load_dotenv()
+load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)

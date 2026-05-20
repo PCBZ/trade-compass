@@ -22,7 +22,10 @@ mkdir -p /opt/futu-opend
 PROJECT_ID=$(curl -sf -H "Metadata-Flavor: Google" \
   "http://metadata.google.internal/computeMetadata/v1/project/project-id")
 
-gsutil cp "gs://trade-compass-tfstate-${PROJECT_ID}/sync/*" /opt/trade-compass/sync/
+BUCKET="gs://trade-compass-tfstate-${PROJECT_ID}"
+gsutil cp "${BUCKET}/sync/main.py" /opt/trade-compass/sync/
+gsutil cp "${BUCKET}/sync/setup_cron.sh" /opt/trade-compass/sync/
+gsutil cp "${BUCKET}/sync/requirements.txt" /opt/trade-compass/sync/
 chmod +x /opt/trade-compass/sync/setup_cron.sh
 
 # ── Python venv + dependencies ────────────────────────────────

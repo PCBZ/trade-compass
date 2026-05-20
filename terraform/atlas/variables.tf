@@ -28,9 +28,14 @@ variable "db_username" {
 }
 
 variable "db_password" {
-  description = "Database user password"
+  description = "Database user password (must not contain URI reserved characters: @:/?#[]!$&'()*+,;=)"
   type        = string
   sensitive   = true
+
+  validation {
+    condition     = !can(regex("[@:/?#\\[\\]!$&'()*+,;=%]", var.db_password))
+    error_message = "db_password must not contain URI reserved characters (@:/?#[]!$&'()*+,;=%). Use alphanumeric and - _ . characters only."
+  }
 }
 
 variable "tfstate_bucket" {

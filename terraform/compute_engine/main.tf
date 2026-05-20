@@ -13,15 +13,6 @@ provider "google" {
   zone    = var.zone
 }
 
-# ── Remote state: read Cloud Run outputs ──────────────────────
-data "terraform_remote_state" "cloud_run" {
-  backend = "gcs"
-  config = {
-    bucket = "trade-compass-tfstate-${var.gcp_project_id}"
-    prefix = "cloud_run"
-  }
-}
-
 # ── Secret Manager: look up api_key secret ────────────────────
 data "google_secret_manager_secret" "api_key" {
   secret_id = "trade-compass-api-key"
@@ -48,13 +39,13 @@ locals {
 resource "google_storage_bucket_object" "sync" {
   for_each = toset(local.sync_files)
   name     = "sync/${each.value}"
-  bucket   = "trade-compass-tfstate-${var.gcp_project_id}"
+  bucket   = coalesce(var.tfstate_bucket, "trade-compass-tfstate-${var.gcp_project_id}")
   source   = "${path.module}/../../sync/${each.value}"
 }
 
 # ── Grant VM SA read access to sync/ prefix only ─────────────
 resource "google_storage_bucket_iam_member" "vm_sync_read" {
-  bucket = "trade-compass-tfstate-${var.gcp_project_id}"
+  bucket = coalesce(var.tfstate_bucket, "trade-compass-tfstate-${var.gcp_project_id}")
   role   = "roles/storage.objectViewer"
   member = "serviceAccount:${google_service_account.trade_compass.email}"
 
@@ -113,7 +104,7 @@ resource "google_compute_instance" "trade_compass" {
 
   metadata = {
     enable-oslogin        = "TRUE"
-    trade-compass-api-url = data.terraform_remote_state.cloud_run.outputs.service_url
+    trade-compass-api-url = var.api_url
   }
 
   depends_on = [
