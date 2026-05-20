@@ -25,8 +25,7 @@ python3 -m venv /opt/trade-compass/venv
 /opt/trade-compass/venv/bin/pip install -r /opt/trade-compass/sync/requirements.txt
 
 # ── Download Futu OpenD (Ubuntu) ──────────────────────────────
-OPEND_VERSION="7.21.5608"
-wget -q "https://softcdn.futunn.com/FutuOpenD_${OPEND_VERSION}_Ubuntu.tar.gz" -O /tmp/FutuOpenD.tar.gz
+wget -q "https://softwaredownload.futustatic.com/moomoo_OpenD_10.5.6508_Ubuntu18.04.tar.gz" -O /tmp/FutuOpenD.tar.gz
 tar -xzf /tmp/FutuOpenD.tar.gz -C /opt/futu-opend --strip-components=1
 rm /tmp/FutuOpenD.tar.gz
 
