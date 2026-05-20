@@ -26,7 +26,7 @@ resource "google_service_account" "trade_compass" {
 
 # ── Grant VM SA access to api_key secret ──────────────────────
 resource "google_secret_manager_secret_iam_member" "vm_api_key_access" {
-  secret_id = data.google_secret_manager_secret.api_key.secret_id
+  secret_id = data.google_secret_manager_secret.api_key.id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.trade_compass.email}"
 }
