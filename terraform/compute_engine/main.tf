@@ -31,28 +31,29 @@ resource "google_secret_manager_secret_iam_member" "vm_api_key_access" {
   member    = "serviceAccount:${google_service_account.trade_compass.email}"
 }
 
-# ── Upload sync scripts to GCS ────────────────────────────────
+# ── Resolved bucket name (used consistently across resources) ─
 locals {
-  sync_files = ["main.py", "setup_cron.sh", "requirements.txt"]
+  sync_files   = ["main.py", "setup_cron.sh", "requirements.txt"]
+  bucket_name  = coalesce(var.tfstate_bucket, "trade-compass-tfstate-${var.gcp_project_id}")
 }
 
 resource "google_storage_bucket_object" "sync" {
   for_each = toset(local.sync_files)
   name     = "sync/${each.value}"
-  bucket   = coalesce(var.tfstate_bucket, "trade-compass-tfstate-${var.gcp_project_id}")
+  bucket   = local.bucket_name
   source   = "${path.module}/../../sync/${each.value}"
 }
 
 # ── Grant VM SA read access to sync/ prefix only ─────────────
 resource "google_storage_bucket_iam_member" "vm_sync_read" {
-  bucket = coalesce(var.tfstate_bucket, "trade-compass-tfstate-${var.gcp_project_id}")
+  bucket = local.bucket_name
   role   = "roles/storage.objectViewer"
   member = "serviceAccount:${google_service_account.trade_compass.email}"
 
   condition {
     title       = "sync_prefix_only"
     description = "Restrict VM SA to sync/ objects only"
-    expression  = "resource.name.startsWith(\"projects/_/buckets/trade-compass-tfstate-${var.gcp_project_id}/objects/sync/\")"
+    expression  = "resource.name.startsWith(\"projects/_/buckets/${local.bucket_name}/objects/sync/\")"
   }
 }
 
@@ -103,8 +104,9 @@ resource "google_compute_instance" "trade_compass" {
   }
 
   metadata = {
-    enable-oslogin        = "TRUE"
-    trade-compass-api-url = var.api_url
+    enable-oslogin           = "TRUE"
+    trade-compass-api-url    = var.api_url
+    trade-compass-sync-bucket = local.bucket_name
   }
 
   depends_on = [

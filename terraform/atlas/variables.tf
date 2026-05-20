@@ -22,19 +22,24 @@ variable "project_name" {
 }
 
 variable "db_username" {
-  description = "Database user for the REST API"
+  description = "Database user for the REST API (alphanumeric and - _ . only)"
   type        = string
   default     = "trade-compass-api"
+
+  validation {
+    condition     = can(regex("^[a-zA-Z0-9._-]+$", var.db_username))
+    error_message = "db_username must contain only alphanumeric characters and - _ . to ensure a valid MongoDB URI."
+  }
 }
 
 variable "db_password" {
-  description = "Database user password (must not contain URI reserved characters: @:/?#[]!$&'()*+,;=)"
+  description = "Database user password (alphanumeric and - _ . only)"
   type        = string
   sensitive   = true
 
   validation {
-    condition     = !can(regex("[@:/?#\\[\\]!$&'()*+,;=%]", var.db_password))
-    error_message = "db_password must not contain URI reserved characters (@:/?#[]!$&'()*+,;=%). Use alphanumeric and - _ . characters only."
+    condition     = can(regex("^[a-zA-Z0-9._-]+$", var.db_password))
+    error_message = "db_password must contain only alphanumeric characters and - _ . to ensure a valid MongoDB URI."
   }
 }
 

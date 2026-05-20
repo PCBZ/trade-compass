@@ -15,7 +15,7 @@ CRON_JOB_1="30,35,40,45,50,55 13 * * 1-5 ${VENV}/bin/python ${SCRIPT} >> ${LOG} 
 # 14:00-20:00 UTC
 CRON_JOB_2="*/5 14-20 * * 1-5 ${VENV}/bin/python ${SCRIPT} >> ${LOG} 2>&1"
 
-(crontab -l 2>/dev/null | grep -v "${SCRIPT}"; echo "${CRON_JOB_1}"; echo "${CRON_JOB_2}") | crontab -
+(crontab -l 2>/dev/null || true; echo "${CRON_JOB_1}"; echo "${CRON_JOB_2}") | grep -v "${SCRIPT}" | crontab -
 
 echo "Cron job installed:"
 crontab -l | grep "${SCRIPT}"

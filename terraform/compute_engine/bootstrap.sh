@@ -18,11 +18,14 @@ apt-get install -y google-cloud-cli
 mkdir -p /opt/trade-compass/sync
 mkdir -p /opt/futu-opend
 
-# ── Download sync scripts from GCS ───────────────────────────
-PROJECT_ID=$(curl -sf -H "Metadata-Flavor: Google" \
-  "http://metadata.google.internal/computeMetadata/v1/project/project-id")
+# ── Read instance metadata ────────────────────────────────────
+METADATA_BASE="http://metadata.google.internal/computeMetadata/v1/instance/attributes"
+METADATA_HEADER="Metadata-Flavor: Google"
 
-BUCKET="gs://trade-compass-tfstate-${PROJECT_ID}"
+SYNC_BUCKET=$(curl -sf -H "${METADATA_HEADER}" "${METADATA_BASE}/trade-compass-sync-bucket")
+
+# ── Download sync scripts from GCS ───────────────────────────
+BUCKET="gs://${SYNC_BUCKET}"
 gsutil cp "${BUCKET}/sync/main.py" /opt/trade-compass/sync/
 gsutil cp "${BUCKET}/sync/setup_cron.sh" /opt/trade-compass/sync/
 gsutil cp "${BUCKET}/sync/requirements.txt" /opt/trade-compass/sync/
@@ -39,9 +42,6 @@ tar -xzf /tmp/FutuOpenD.tar.gz -C /opt/futu-opend --strip-components=1
 rm /tmp/FutuOpenD.tar.gz
 
 # ── Read config and secrets → write .env ─────────────────────
-METADATA_BASE="http://metadata.google.internal/computeMetadata/v1/instance/attributes"
-METADATA_HEADER="Metadata-Flavor: Google"
-
 API_URL_VAL=$(curl -sf -H "${METADATA_HEADER}" "${METADATA_BASE}/trade-compass-api-url")
 API_KEY_VAL=$(gcloud secrets versions access latest --secret=trade-compass-api-key)
 
