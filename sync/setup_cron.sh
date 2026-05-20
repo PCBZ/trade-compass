@@ -2,6 +2,7 @@
 # Set up cron job to sync Moomoo positions during US market hours.
 # US market: 9:30-16:00 ET = 13:30-20:00 UTC
 # Runs every 5 minutes during market hours, Mon-Fri.
+# Two cron entries: 13:30-13:55 and 14:00-20:00 UTC.
 
 set -e
 
@@ -9,9 +10,12 @@ VENV="/opt/trade-compass/venv"
 SCRIPT="/opt/trade-compass/sync/main.py"
 LOG="/var/log/trade-compass-sync.log"
 
-CRON_JOB="*/5 13-19 * * 1-5 ${VENV}/bin/python ${SCRIPT} >> ${LOG} 2>&1"
+# 13:30-13:55 UTC (first half hour of market open)
+CRON_JOB_1="30,35,40,45,50,55 13 * * 1-5 ${VENV}/bin/python ${SCRIPT} >> ${LOG} 2>&1"
+# 14:00-20:00 UTC
+CRON_JOB_2="*/5 14-20 * * 1-5 ${VENV}/bin/python ${SCRIPT} >> ${LOG} 2>&1"
 
-(crontab -l 2>/dev/null | grep -v "${SCRIPT}"; echo "${CRON_JOB}") | crontab -
+(crontab -l 2>/dev/null | grep -v "${SCRIPT}"; echo "${CRON_JOB_1}"; echo "${CRON_JOB_2}") | crontab -
 
 echo "Cron job installed:"
 crontab -l | grep "${SCRIPT}"

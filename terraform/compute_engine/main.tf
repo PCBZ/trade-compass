@@ -52,11 +52,17 @@ resource "google_storage_bucket_object" "sync" {
   source   = "${path.module}/../../sync/${each.value}"
 }
 
-# ── Grant VM SA read access to GCS bucket ────────────────────
+# ── Grant VM SA read access to sync/ prefix only ─────────────
 resource "google_storage_bucket_iam_member" "vm_sync_read" {
   bucket = "trade-compass-tfstate-${var.gcp_project_id}"
   role   = "roles/storage.objectViewer"
   member = "serviceAccount:${google_service_account.trade_compass.email}"
+
+  condition {
+    title       = "sync_prefix_only"
+    description = "Restrict VM SA to sync/ objects only"
+    expression  = "resource.name.startsWith(\"projects/_/buckets/trade-compass-tfstate-${var.gcp_project_id}/objects/sync/\")"
+  }
 }
 
 # ── Firewall: allow SSH ───────────────────────────────────────

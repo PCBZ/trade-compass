@@ -6,7 +6,13 @@ export DEBIAN_FRONTEND=noninteractive
 
 # ── System setup ──────────────────────────────────────────────
 apt-get update -y
-apt-get install -y python3 python3-pip python3-venv curl wget unzip
+apt-get install -y python3 python3-pip python3-venv curl wget unzip apt-transport-https ca-certificates gnupg
+
+# ── Install Google Cloud CLI ──────────────────────────────────
+curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" > /etc/apt/sources.list.d/google-cloud-sdk.list
+apt-get update -y
+apt-get install -y google-cloud-cli
 
 # ── Create app directories ────────────────────────────────────
 mkdir -p /opt/trade-compass/sync
@@ -24,7 +30,7 @@ python3 -m venv /opt/trade-compass/venv
 /opt/trade-compass/venv/bin/pip install --upgrade pip
 /opt/trade-compass/venv/bin/pip install -r /opt/trade-compass/sync/requirements.txt
 
-# ── Download Futu OpenD (Ubuntu) ──────────────────────────────
+# ── Download Moomoo OpenD (Ubuntu 18.04 build, compatible with 24.04) ────
 wget -q "https://softwaredownload.futustatic.com/moomoo_OpenD_10.5.6508_Ubuntu18.04.tar.gz" -O /tmp/FutuOpenD.tar.gz
 tar -xzf /tmp/FutuOpenD.tar.gz -C /opt/futu-opend --strip-components=1
 rm /tmp/FutuOpenD.tar.gz

@@ -12,5 +12,5 @@ variable "region" {
 variable "tfstate_bucket" {
   description = "GCS bucket name for Terraform remote state"
   type        = string
-  default     = ""
+  default     = null
 }

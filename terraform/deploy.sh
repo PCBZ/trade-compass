@@ -34,7 +34,7 @@ cd ..
 echo "=== Step 4: Compute Engine ==="
 cd compute_engine
 terraform init -backend-config="bucket=${BUCKET}" -backend-config="prefix=compute_engine"
-terraform apply -auto-approve
+terraform apply -auto-approve -var="gcp_project_id=${PROJECT_ID}"
 cd ..
 
 echo "=== Done ==="

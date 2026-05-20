@@ -4,12 +4,25 @@ output "connection_string" {
   sensitive   = true
 }
 
+locals {
+  # URL-encode special characters in password that would break the URI
+  encoded_password = replace(
+    replace(
+      replace(
+        replace(
+          replace(var.db_password, "%", "%25"),
+          "@", "%40"),
+        ":", "%3A"),
+      "/", "%2F"),
+    "+", "%2B")
+}
+
 output "mongodb_uri" {
   description = "Full MongoDB connection URI including credentials"
   value = replace(
     mongodbatlas_cluster.main.connection_strings[0].standard_srv,
     "mongodb+srv://",
-    "mongodb+srv://${var.db_username}:${var.db_password}@"
+    "mongodb+srv://${var.db_username}:${local.encoded_password}@"
   )
   sensitive = true
 }
