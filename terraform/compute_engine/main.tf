@@ -33,8 +33,8 @@ resource "google_secret_manager_secret_iam_member" "vm_api_key_access" {
 
 # ── Resolved bucket name (used consistently across resources) ─
 locals {
-  sync_files   = ["main.py", "setup_cron.sh", "requirements.txt"]
-  bucket_name  = coalesce(var.tfstate_bucket, "trade-compass-tfstate-${var.gcp_project_id}")
+  sync_files  = ["main.py", "setup_cron.sh", "requirements.txt"]
+  bucket_name = coalesce(var.tfstate_bucket, "trade-compass-tfstate-${var.gcp_project_id}")
 }
 
 resource "google_storage_bucket_object" "sync" {
@@ -104,8 +104,8 @@ resource "google_compute_instance" "trade_compass" {
   }
 
   metadata = {
-    enable-oslogin           = "TRUE"
-    trade-compass-api-url    = var.api_url
+    enable-oslogin            = "TRUE"
+    trade-compass-api-url     = var.api_url
     trade-compass-sync-bucket = local.bucket_name
   }
 
