@@ -19,22 +19,22 @@ terraform init
 terraform apply -auto-approve -var="gcp_project_id=${PROJECT_ID}"
 cd ..
 
-echo "=== Step 2: Compute Engine ==="
-cd compute_engine
-terraform init -backend-config="bucket=${BUCKET}" -backend-config="prefix=compute_engine"
-terraform apply -auto-approve
-cd ..
-
-echo "=== Step 3: Atlas ==="
+echo "=== Step 2: Atlas ==="
 cd atlas
 terraform init -backend-config="bucket=${BUCKET}" -backend-config="prefix=atlas"
 terraform apply -auto-approve -var="tfstate_bucket=${BUCKET}"
 cd ..
 
-echo "=== Step 4: Cloud Run ==="
+echo "=== Step 3: Cloud Run ==="
 cd cloud_run
 terraform init -backend-config="bucket=${BUCKET}" -backend-config="prefix=cloud_run"
-terraform apply -auto-approve -var="gcp_project_id=${PROJECT_ID}"
+terraform apply -auto-approve -var="gcp_project_id=${PROJECT_ID}" -var="tfstate_bucket=${BUCKET}"
+cd ..
+
+echo "=== Step 4: Compute Engine ==="
+cd compute_engine
+terraform init -backend-config="bucket=${BUCKET}" -backend-config="prefix=compute_engine"
+terraform apply -auto-approve
 cd ..
 
 echo "=== Done ==="

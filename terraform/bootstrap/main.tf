@@ -12,6 +12,18 @@ provider "google" {
   region  = "us-west1"
 }
 
+# ── Enable required GCP APIs ──────────────────────────────────
+resource "google_project_service" "apis" {
+  for_each = toset([
+    "secretmanager.googleapis.com",
+    "run.googleapis.com",
+    "artifactregistry.googleapis.com",
+    "compute.googleapis.com",
+  ])
+  service            = each.value
+  disable_on_destroy = false
+}
+
 # ── GCS bucket for Terraform remote state ─────────────────────
 resource "google_storage_bucket" "tfstate" {
   name          = "trade-compass-tfstate-${var.gcp_project_id}"
