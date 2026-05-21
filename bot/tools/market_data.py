@@ -126,6 +126,21 @@ async def fetch_financials(client: httpx.AsyncClient, ticker: str, limit: int = 
     }
 
 
+async def fetch_scores(client: httpx.AsyncClient, ticker: str) -> dict[str, Any]:
+    """Piotroski F-Score and Altman Z-Score from FMP's pre-computed scores.
+
+    Source: GET /stable/scores
+    """
+    data = await _get(client, "/stable/scores", symbol=ticker)
+    if not data:
+        return {}
+    s = data[0]
+    return {
+        "piotroski_score": s.get("piotroskiScore"),
+        "altman_z_score": s.get("altmanZScore"),
+    }
+
+
 async def fetch_news(client: httpx.AsyncClient, ticker: str, limit: int = 8) -> list[dict[str, Any]]:
     """Recent news headlines and summaries.
 

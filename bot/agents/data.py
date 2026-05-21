@@ -14,6 +14,7 @@ from bot.tools.market_data import (
     fetch_news,
     fetch_profile,
     fetch_quote,
+    fetch_scores,
 )
 from bot.tools.portfolio_api import get_holdings, get_preferences
 
@@ -36,6 +37,7 @@ async def data_agent(state: AnalysisState) -> dict:
                 profile,
                 key_metrics,
                 financials,
+                scores,
                 news,
                 analyst,
                 holdings,
@@ -45,6 +47,7 @@ async def data_agent(state: AnalysisState) -> dict:
                 fetch_profile(client, ticker),
                 fetch_key_metrics(client, ticker),
                 fetch_financials(client, ticker),
+                fetch_scores(client, ticker),
                 fetch_news(client, ticker),
                 fetch_analyst_ratings(client, ticker),
                 get_holdings(),
@@ -57,6 +60,7 @@ async def data_agent(state: AnalysisState) -> dict:
                 "profile": profile,
                 "key_metrics": key_metrics,
                 "financials": financials,
+                "scores": scores,
                 "news": news,
                 "analyst": analyst,
             },
