@@ -1,0 +1,34 @@
+{
+  "llm_models": [
+    {
+      "id": "meta-llama/llama-3.3-70b-instruct:free",
+      "name": "Llama 3.3 70B",
+      "description": "Solid general reasoning. Default.",
+      "default": true
+    },
+    {
+      "id": "deepseek/deepseek-v4-flash:free",
+      "name": "DeepSeek V4 Flash",
+      "description": "Strong finance analysis. 1M context.",
+      "default": false
+    },
+    {
+      "id": "google/gemma-4-31b-it:free",
+      "name": "Gemma 4 31B",
+      "description": "Good multilingual support.",
+      "default": false
+    },
+    {
+      "id": "nvidia/nemotron-3-super-120b-a12b:free",
+      "name": "Nemotron 120B",
+      "description": "Large model. Best reasoning quality.",
+      "default": false
+    },
+    {
+      "id": "qwen/qwen3-next-80b-a3b-instruct:free",
+      "name": "Qwen3 80B",
+      "description": "Strong analytical tasks.",
+      "default": false
+    }
+  ]
+}
