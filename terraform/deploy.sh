@@ -43,4 +43,15 @@ cd compute_engine
 terraform apply -auto-approve -var="gcp_project_id=${PROJECT_ID}" -var="tfstate_bucket=${BUCKET}" -var="api_url=${API_URL}"
 cd ..
 
+echo "=== Step 6: Generate bot/.env ==="
+API_KEY=$(cd cloud_run && terraform output -raw api_key)
+cat > "${ROOT_DIR}/bot/.env" <<EOF
+API_URL=${API_URL}
+API_KEY=${API_KEY}
+OPENROUTER_API_KEY=
+TELEGRAM_BOT_TOKEN=
+BRAVE_API_KEY=
+EOF
+echo "bot/.env written (OPENROUTER_API_KEY / TELEGRAM_BOT_TOKEN / BRAVE_API_KEY still need to be filled in)"
+
 echo "=== Done ==="
