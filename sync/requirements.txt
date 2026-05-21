@@ -1,0 +1,3 @@
+futu-api==9.4.5408
+httpx==0.27.0
+python-dotenv==1.0.1

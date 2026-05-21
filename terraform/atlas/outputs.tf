@@ -4,6 +4,16 @@ output "connection_string" {
   sensitive   = true
 }
 
+output "mongodb_uri" {
+  description = "Full MongoDB connection URI including credentials"
+  value = replace(
+    mongodbatlas_cluster.main.connection_strings[0].standard_srv,
+    "mongodb+srv://",
+    "mongodb+srv://${var.db_username}:${var.db_password}@"
+  )
+  sensitive = true
+}
+
 output "project_id" {
   description = "Atlas project ID"
   value       = mongodbatlas_project.trade_compass.id

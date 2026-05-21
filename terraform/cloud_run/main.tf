@@ -60,6 +60,15 @@ resource "google_artifact_registry_repository_iam_member" "api_image_pull" {
   member     = "serviceAccount:${google_service_account.api.email}"
 }
 
+# ── Remote state: read Atlas outputs ─────────────────────────
+data "terraform_remote_state" "atlas" {
+  backend = "gcs"
+  config = {
+    bucket = coalesce(var.tfstate_bucket, "trade-compass-tfstate-${var.gcp_project_id}")
+    prefix = "atlas"
+  }
+}
+
 # ── Secret: MongoDB URI ───────────────────────────────────────
 resource "google_secret_manager_secret" "mongodb_uri" {
   secret_id = "trade-compass-mongodb-uri"
@@ -67,6 +76,11 @@ resource "google_secret_manager_secret" "mongodb_uri" {
   replication {
     auto {}
   }
+}
+
+resource "google_secret_manager_secret_version" "mongodb_uri" {
+  secret      = google_secret_manager_secret.mongodb_uri.id
+  secret_data = data.terraform_remote_state.atlas.outputs.mongodb_uri
 }
 
 # ── Secret: API Key ───────────────────────────────────────────
@@ -140,7 +154,13 @@ resource "google_cloud_run_v2_service" "api" {
     }
   }
 
-  depends_on = [null_resource.build_push, google_secret_manager_secret_iam_member.api_secret_access, google_secret_manager_secret_iam_member.api_key_access]
+  depends_on = [
+    null_resource.build_push,
+    google_secret_manager_secret_iam_member.api_secret_access,
+    google_secret_manager_secret_iam_member.api_key_access,
+    google_secret_manager_secret_version.mongodb_uri,
+    google_secret_manager_secret_version.api_key,
+  ]
 }
 
 # ── Allow unauthenticated (auth handled by X-API-Key header) ──

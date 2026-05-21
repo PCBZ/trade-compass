@@ -20,3 +20,15 @@ variable "ssh_allowed_ips" {
   type        = list(string)
   default     = ["0.0.0.0/0"]
 }
+
+variable "api_url" {
+  description = "trade-compass Cloud Run service URL (empty on first apply; set after Cloud Run is deployed)"
+  type        = string
+  default     = ""
+}
+
+variable "tfstate_bucket" {
+  description = "GCS bucket name for Terraform remote state"
+  type        = string
+  default     = null
+}

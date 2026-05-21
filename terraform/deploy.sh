@@ -19,10 +19,10 @@ terraform init
 terraform apply -auto-approve -var="gcp_project_id=${PROJECT_ID}"
 cd ..
 
-echo "=== Step 2: Compute Engine ==="
+echo "=== Step 2: Compute Engine (static IP only — no api_url yet) ==="
 cd compute_engine
 terraform init -backend-config="bucket=${BUCKET}" -backend-config="prefix=compute_engine"
-terraform apply -auto-approve
+terraform apply -auto-approve -var="gcp_project_id=${PROJECT_ID}" -var="tfstate_bucket=${BUCKET}"
 cd ..
 
 echo "=== Step 3: Atlas ==="
@@ -34,7 +34,13 @@ cd ..
 echo "=== Step 4: Cloud Run ==="
 cd cloud_run
 terraform init -backend-config="bucket=${BUCKET}" -backend-config="prefix=cloud_run"
-terraform apply -auto-approve -var="gcp_project_id=${PROJECT_ID}"
+terraform apply -auto-approve -var="gcp_project_id=${PROJECT_ID}" -var="tfstate_bucket=${BUCKET}"
+API_URL=$(terraform output -raw service_url)
+cd ..
+
+echo "=== Step 5: Compute Engine (update with api_url) ==="
+cd compute_engine
+terraform apply -auto-approve -var="gcp_project_id=${PROJECT_ID}" -var="tfstate_bucket=${BUCKET}" -var="api_url=${API_URL}"
 cd ..
 
 echo "=== Done ==="

@@ -13,10 +13,48 @@ provider "google" {
   zone    = var.zone
 }
 
+# ── Secret Manager: look up api_key secret ────────────────────
+data "google_secret_manager_secret" "api_key" {
+  secret_id = "trade-compass-api-key"
+}
+
 # ── Service account ───────────────────────────────────────────
 resource "google_service_account" "trade_compass" {
   account_id   = "trade-compass-vm"
   display_name = "trade-compass Compute Engine SA"
+}
+
+# ── Grant VM SA access to api_key secret ──────────────────────
+resource "google_secret_manager_secret_iam_member" "vm_api_key_access" {
+  secret_id = data.google_secret_manager_secret.api_key.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.trade_compass.email}"
+}
+
+# ── Resolved bucket name (used consistently across resources) ─
+locals {
+  sync_files  = ["main.py", "setup_cron.sh", "requirements.txt"]
+  bucket_name = coalesce(var.tfstate_bucket, "trade-compass-tfstate-${var.gcp_project_id}")
+}
+
+resource "google_storage_bucket_object" "sync" {
+  for_each = toset(local.sync_files)
+  name     = "sync/${each.value}"
+  bucket   = local.bucket_name
+  source   = "${path.module}/../../sync/${each.value}"
+}
+
+# ── Grant VM SA read access to sync/ prefix only ─────────────
+resource "google_storage_bucket_iam_member" "vm_sync_read" {
+  bucket = local.bucket_name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.trade_compass.email}"
+
+  condition {
+    title       = "sync_prefix_only"
+    description = "Restrict VM SA to sync/ objects only"
+    expression  = "resource.name.startsWith(\"projects/_/buckets/${local.bucket_name}/objects/sync/\")"
+  }
 }
 
 # ── Firewall: allow SSH ───────────────────────────────────────
@@ -66,8 +104,16 @@ resource "google_compute_instance" "trade_compass" {
   }
 
   metadata = {
-    enable-oslogin = "TRUE"
+    enable-oslogin            = "TRUE"
+    trade-compass-api-url     = var.api_url
+    trade-compass-sync-bucket = local.bucket_name
   }
+
+  depends_on = [
+    google_secret_manager_secret_iam_member.vm_api_key_access,
+    google_storage_bucket_iam_member.vm_sync_read,
+    google_storage_bucket_object.sync,
+  ]
 
   metadata_startup_script = file("${path.module}/bootstrap.sh")
 
