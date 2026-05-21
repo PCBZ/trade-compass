@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 export HOME=/root
 export DEBIAN_FRONTEND=noninteractive
@@ -37,7 +37,11 @@ python3 -m venv /opt/trade-compass/venv
 /opt/trade-compass/venv/bin/pip install -r /opt/trade-compass/sync/requirements.txt
 
 # ── Download Moomoo OpenD (Ubuntu 18.04 build, compatible with 24.04) ────
-wget -q "https://softwaredownload.futustatic.com/moomoo_OpenD_10.5.6508_Ubuntu18.04.tar.gz" -O /tmp/FutuOpenD.tar.gz
+OPEND_URL="https://softwaredownload.futustatic.com/moomoo_OpenD_10.5.6508_Ubuntu18.04.tar.gz"
+OPEND_SHA256="3f883a30cac71ce769aa3a271346b670534ecda458624e3815087386b5c94875"
+
+wget -q "${OPEND_URL}" -O /tmp/FutuOpenD.tar.gz
+echo "${OPEND_SHA256}  /tmp/FutuOpenD.tar.gz" | sha256sum -c -
 tar -xzf /tmp/FutuOpenD.tar.gz -C /opt/futu-opend --strip-components=1
 rm /tmp/FutuOpenD.tar.gz
 

@@ -22,8 +22,9 @@ variable "ssh_allowed_ips" {
 }
 
 variable "api_url" {
-  description = "trade-compass Cloud Run service URL"
+  description = "trade-compass Cloud Run service URL (empty on first apply; set after Cloud Run is deployed)"
   type        = string
+  default     = ""
 }
 
 variable "tfstate_bucket" {
