@@ -1,12 +1,14 @@
 """LangGraph workflow topology.
 
-Graph structure:
-    START
-      └─► route_intent
-            ├─► (single) data_agent
-            │         ├─► fundamental_agent ─┐
-            │         └─► sentiment_agent   ─┴─► decision_agent ─► END
-            └─► (portfolio) portfolio_agent ──────────────────────► END
+Two compiled graphs are exported:
+
+  single_stock_graph — used by bot handlers for /decide, /choose
+    START → data_agent → (fundamental_agent ║ sentiment_agent) → decision_agent → END
+
+  graph — full graph with intent routing, used as the main entry point
+    START → route_intent
+              ├─► (single)    single_stock_graph nodes
+              └─► (portfolio) portfolio_agent → END
 """
 
 from __future__ import annotations
@@ -39,42 +41,58 @@ def after_data(state: AnalysisState) -> list[str]:
     return ["fundamental_agent", "sentiment_agent"]
 
 
-# ── Graph assembly ────────────────────────────────────────────────────────────
+# ── Single-stock subgraph (reused by portfolio_agent) ────────────────────────
+
+def build_single_stock_graph() -> StateGraph:
+    builder = StateGraph(AnalysisState)
+
+    builder.add_node("data_agent", data_agent)
+    builder.add_node("fundamental_agent", fundamental_agent)
+    builder.add_node("sentiment_agent", sentiment_agent)
+    builder.add_node("decision_agent", decision_agent)
+
+    builder.add_edge(START, "data_agent")
+    builder.add_conditional_edges("data_agent", after_data, {
+        "fundamental_agent": "fundamental_agent",
+        "sentiment_agent": "sentiment_agent",
+        END: END,
+    })
+    builder.add_edge("fundamental_agent", "decision_agent")
+    builder.add_edge("sentiment_agent", "decision_agent")
+    builder.add_edge("decision_agent", END)
+
+    return builder.compile()
+
+
+# ── Full graph (main entry point) ─────────────────────────────────────────────
 
 def build_graph() -> StateGraph:
     builder = StateGraph(AnalysisState)
 
-    # Nodes
     builder.add_node("data_agent", data_agent)
     builder.add_node("fundamental_agent", fundamental_agent)
     builder.add_node("sentiment_agent", sentiment_agent)
     builder.add_node("decision_agent", decision_agent)
     builder.add_node("portfolio_agent", portfolio_agent)
 
-    # Edges
     builder.add_conditional_edges(START, route_intent, {
         "data_agent": "data_agent",
         "portfolio_agent": "portfolio_agent",
         END: END,
     })
-
-    # Fan-out after data fetch
     builder.add_conditional_edges("data_agent", after_data, {
         "fundamental_agent": "fundamental_agent",
         "sentiment_agent": "sentiment_agent",
         END: END,
     })
-
-    # Fan-in: both analysis agents converge on decision_agent
     builder.add_edge("fundamental_agent", "decision_agent")
     builder.add_edge("sentiment_agent", "decision_agent")
-
-    # Terminal edges
     builder.add_edge("decision_agent", END)
     builder.add_edge("portfolio_agent", END)
 
     return builder.compile()
 
 
-# Compiled graph (import this in bot handlers)
+# Exported compiled graphs
+single_stock_graph = build_single_stock_graph()
 graph = build_graph()
