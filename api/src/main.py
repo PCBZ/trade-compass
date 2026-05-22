@@ -10,7 +10,7 @@ from routers.preferences import router as preferences_router
 
 _REQUIRED_ENV = ["API_KEY", "MONGODB_URI"]
 
-app = FastAPI(title="trade-compass API")
+app = FastAPI(title="trade-compass API", redirect_slashes=False)
 
 
 @app.on_event("startup")

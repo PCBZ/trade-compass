@@ -43,15 +43,30 @@ cd compute_engine
 terraform apply -auto-approve -var="gcp_project_id=${PROJECT_ID}" -var="tfstate_bucket=${BUCKET}" -var="api_url=${API_URL}"
 cd ..
 
-echo "=== Step 6: Generate bot/.env ==="
+echo "=== Step 6: Update bot/.env with terraform outputs ==="
 API_KEY=$(cd cloud_run && terraform output -raw api_key)
-cat > "${ROOT_DIR}/bot/.env" <<EOF
-API_URL=${API_URL}
-API_KEY=${API_KEY}
-FMP_API_KEY=
-OPENROUTER_API_KEY=
-TELEGRAM_BOT_TOKEN=
-EOF
-echo "bot/.env written (FMP_API_KEY / OPENROUTER_API_KEY / TELEGRAM_BOT_TOKEN still need to be filled in)"
+ENV_FILE="${ROOT_DIR}/bot/.env"
+
+# Helper: set or replace a key in bot/.env, preserving all other lines
+set_env() {
+  local key="$1" val="$2"
+  if grep -q "^${key}=" "${ENV_FILE}" 2>/dev/null; then
+    sed -i '' "s|^${key}=.*|${key}=${val}|" "${ENV_FILE}"
+  else
+    echo "${key}=${val}" >> "${ENV_FILE}"
+  fi
+}
+
+touch "${ENV_FILE}"
+set_env "API_URL"  "${API_URL}"
+set_env "API_KEY"  "${API_KEY}"
+
+# Only add placeholder lines if key is not already present
+grep -q "^FMP_API_KEY=" "${ENV_FILE}"         || echo "FMP_API_KEY="         >> "${ENV_FILE}"
+grep -q "^OPENROUTER_API_KEY=" "${ENV_FILE}"  || echo "OPENROUTER_API_KEY="  >> "${ENV_FILE}"
+grep -q "^TELEGRAM_BOT_TOKEN=" "${ENV_FILE}"  || echo "TELEGRAM_BOT_TOKEN="  >> "${ENV_FILE}"
+grep -q "^TELEGRAM_CHAT_ID=" "${ENV_FILE}"    || echo "TELEGRAM_CHAT_ID="    >> "${ENV_FILE}"
+
+echo "bot/.env updated (API_URL + API_KEY refreshed; existing keys preserved)"
 
 echo "=== Done ==="

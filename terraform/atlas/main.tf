@@ -57,3 +57,10 @@ resource "mongodbatlas_project_ip_access_list" "compute_engine" {
   ip_address = data.terraform_remote_state.compute_engine.outputs.external_ip
   comment    = "Compute Engine static IP"
 }
+
+# Cloud Run uses dynamic egress IPs — allow all so the API can reach Atlas
+resource "mongodbatlas_project_ip_access_list" "allow_all" {
+  project_id = mongodbatlas_project.trade_compass.id
+  cidr_block = "0.0.0.0/0"
+  comment    = "Cloud Run dynamic egress IPs"
+}

@@ -15,7 +15,7 @@ _example = {
 
 
 @router.get(
-    "/",
+    "",
     responses={200: {"content": {"application/json": {"example": _example}}}},
 )
 async def get_preferences():
@@ -26,7 +26,7 @@ async def get_preferences():
 
 
 @router.put(
-    "/",
+    "",
     responses={200: {"content": {"application/json": {"example": _example}}}},
 )
 async def update_preferences(prefs: Preferences):

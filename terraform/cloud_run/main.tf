@@ -12,6 +12,10 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.0"
     }
+    time = {
+      source  = "hashicorp/time"
+      version = "~> 0.11"
+    }
   }
 }
 
@@ -27,24 +31,61 @@ resource "google_artifact_registry_repository" "api" {
   location      = var.region
 }
 
+# ── Grant Cloud Build SA storage + logging access ─────────────────────────────
+# GCP (2024+) uses the Compute Engine default SA for Cloud Build in new projects.
 locals {
-  image = "${var.region}-docker.pkg.dev/${var.gcp_project_id}/${google_artifact_registry_repository.api.repository_id}/api:latest"
+  src_hash      = sha1(join("", [for f in sort(fileset("${path.root}/../../api", "**")) : filesha1("${path.root}/../../api/${f}")]))
+  image         = "${var.region}-docker.pkg.dev/${var.gcp_project_id}/${google_artifact_registry_repository.api.repository_id}/api:${local.src_hash}"
+  cloudbuild_sa = "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
 }
 
-# ── Build and push image ──────────────────────────────────────
+resource "google_project_iam_member" "cloudbuild_storage" {
+  project = var.gcp_project_id
+  role    = "roles/storage.admin"
+  member  = local.cloudbuild_sa
+}
+
+resource "google_project_iam_member" "cloudbuild_logs" {
+  project = var.gcp_project_id
+  role    = "roles/logging.logWriter"
+  member  = local.cloudbuild_sa
+}
+
+resource "google_project_iam_member" "cloudbuild_ar_writer" {
+  project = var.gcp_project_id
+  role    = "roles/artifactregistry.writer"
+  member  = local.cloudbuild_sa
+}
+
+data "google_project" "project" {
+  project_id = var.gcp_project_id
+}
+
+# ── Wait for IAM to propagate before building ────────────────────────────────
+resource "time_sleep" "iam_propagation" {
+  create_duration = "90s"
+
+  depends_on = [
+    google_project_iam_member.cloudbuild_storage,
+    google_project_iam_member.cloudbuild_logs,
+    google_project_iam_member.cloudbuild_ar_writer,
+  ]
+}
+
+# ── Build and push image via Cloud Build (no local Docker needed) ─────────────
 resource "null_resource" "build_push" {
   triggers = {
-    src_hash = sha1(join("", [
-      for f in sort(fileset("${path.root}/../../api", "**")) :
-      filesha1("${path.root}/../../api/${f}")
-    ]))
+    src_hash = local.src_hash
   }
 
   provisioner "local-exec" {
-    command = "docker build --platform linux/amd64 -t ${local.image} ${path.root}/../../api && docker push ${local.image}"
+    command = "gcloud builds submit ${path.root}/../../api --tag ${local.image} --project ${var.gcp_project_id}"
   }
 
-  depends_on = [google_artifact_registry_repository.api]
+  depends_on = [
+    google_artifact_registry_repository.api,
+    time_sleep.iam_propagation,
+  ]
 }
 
 # ── Service account ───────────────────────────────────────────
