@@ -69,4 +69,23 @@ grep -q "^TELEGRAM_CHAT_ID=" "${ENV_FILE}"    || echo "TELEGRAM_CHAT_ID="    >> 
 
 echo "bot/.env updated (API_URL + API_KEY refreshed; existing keys preserved)"
 
+echo "=== Step 7: Bot Cloud Run ==="
+cd bot
+terraform init -backend-config="bucket=${BUCKET}" -backend-config="prefix=bot"
+terraform apply -auto-approve \
+  -var="gcp_project_id=${PROJECT_ID}" \
+  -var="tfstate_bucket=${BUCKET}" \
+  -var="telegram_bot_token=$(grep '^TELEGRAM_BOT_TOKEN=' "${ROOT_DIR}/bot/.env" | cut -d= -f2-)" \
+  -var="telegram_chat_id=$(grep '^TELEGRAM_CHAT_ID=' "${ROOT_DIR}/bot/.env" | cut -d= -f2-)" \
+  -var="fmp_api_key=$(grep '^FMP_API_KEY=' "${ROOT_DIR}/bot/.env" | cut -d= -f2-)" \
+  -var="openrouter_api_key=$(grep '^OPENROUTER_API_KEY=' "${ROOT_DIR}/bot/.env" | cut -d= -f2-)"
+BOT_URL=$(terraform output -raw bot_url)
+cd ..
+
 echo "=== Done ==="
+echo ""
+echo "  API URL : ${API_URL}"
+echo "  Bot URL : ${BOT_URL}"
+echo ""
+echo "Next: register Telegram webhook:"
+echo "  curl -s 'https://api.telegram.org/bot<TOKEN>/setWebhook?url=${BOT_URL}/webhook'"
