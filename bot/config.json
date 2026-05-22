@@ -3,8 +3,8 @@
     {
       "id": "meta-llama/llama-3.3-70b-instruct:free",
       "name": "Llama 3.3 70B",
-      "description": "Solid general reasoning. Default.",
-      "default": true
+      "description": "Solid general reasoning.",
+      "default": false
     },
     {
       "id": "deepseek/deepseek-v4-flash:free",
@@ -21,8 +21,8 @@
     {
       "id": "nvidia/nemotron-3-super-120b-a12b:free",
       "name": "Nemotron 120B",
-      "description": "Large model. Best reasoning quality.",
-      "default": false
+      "description": "Large model. Best reasoning quality. Default.",
+      "default": true
     },
     {
       "id": "qwen/qwen3-next-80b-a3b-instruct:free",

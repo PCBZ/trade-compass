@@ -1,7 +1,7 @@
 """Financial Modeling Prep (FMP) market data tools.
 
 All calls are async via httpx. Requires FMP_API_KEY in environment.
-Free tier: 250 requests/day.
+Free tier: 250 requests/day. All endpoints use the /stable/ API (post-Aug 2025).
 
 Each function maps 1:1 to a single FMP endpoint.
 Aggregation happens in data_agent, not here.
@@ -14,7 +14,7 @@ from typing import Any
 
 import httpx
 
-_BASE = "https://financialmodelingprep.com"
+_BASE = "https://financialmodelingprep.com/stable"
 _API_KEY = os.environ.get("FMP_API_KEY", "")
 
 
@@ -23,21 +23,28 @@ def _key() -> dict[str, str]:
 
 
 async def _get(client: httpx.AsyncClient, path: str, **params: Any) -> Any:
+    """GET a /stable/ endpoint. Returns [] gracefully on 401/403/404 (free tier limits)."""
     resp = await client.get(
         f"{_BASE}{path}", params={**_key(), **params}, timeout=10
     )
+    if resp.status_code in (401, 403, 404):
+        return []
     resp.raise_for_status()
-    return resp.json()
+    data = resp.json()
+    # Some restricted endpoints return a plain string error message
+    if isinstance(data, str):
+        return []
+    return data
 
 
 # ── One function per FMP endpoint ────────────────────────────────────────────
 
 async def fetch_quote(client: httpx.AsyncClient, ticker: str) -> dict[str, Any]:
-    """Real-time price, PE, market cap, 52-week range.
+    """Real-time price, market cap, 52-week range.
 
-    Source: GET /api/v3/quote/{symbol}
+    Source: GET /stable/quote?symbol=
     """
-    data = await _get(client, f"/api/v3/quote/{ticker}")
+    data = await _get(client, "/quote", symbol=ticker)
     if not data:
         return {}
     q = data[0]
@@ -48,18 +55,17 @@ async def fetch_quote(client: httpx.AsyncClient, ticker: str) -> dict[str, Any]:
         "fifty_two_week_high": q.get("yearHigh"),
         "fifty_two_week_low": q.get("yearLow"),
         "market_cap": q.get("marketCap"),
-        "trailing_pe": q.get("pe"),
         "volume": q.get("volume"),
-        "change_pct": q.get("changesPercentage"),
+        "change_pct": q.get("changePercentage"),
     }
 
 
 async def fetch_profile(client: httpx.AsyncClient, ticker: str) -> dict[str, Any]:
     """Company profile: sector, industry, beta, description.
 
-    Source: GET /api/v3/profile/{symbol}
+    Source: GET /stable/profile?symbol=
     """
-    data = await _get(client, f"/api/v3/profile/{ticker}")
+    data = await _get(client, "/profile", symbol=ticker)
     if not data:
         return {}
     p = data[0]
@@ -74,32 +80,36 @@ async def fetch_profile(client: httpx.AsyncClient, ticker: str) -> dict[str, Any
 
 
 async def fetch_key_metrics(client: httpx.AsyncClient, ticker: str) -> dict[str, Any]:
-    """TTM valuation and quality metrics: ROE, FCF, EV/EBITDA, D/E.
+    """Annual valuation and quality metrics: ROE, EV/EBITDA, FCF yield.
 
-    Source: GET /api/v3/key-metrics-ttm/{symbol}
+    Source: GET /stable/key-metrics?symbol=&limit=1
     """
-    data = await _get(client, f"/api/v3/key-metrics-ttm/{ticker}")
+    data = await _get(client, "/key-metrics", symbol=ticker, limit=1)
     if not data:
         return {}
     m = data[0]
+    # PE = 1 / earningsYield when earningsYield > 0
+    earnings_yield = m.get("earningsYield")
+    pe = round(1 / earnings_yield, 1) if earnings_yield and earnings_yield > 0 else None
     return {
-        "forward_pe": m.get("peRatioTTM"),
-        "price_to_book": m.get("priceToBookRatioTTM"),
-        "ev_to_ebitda": m.get("enterpriseValueOverEBITDATTM"),
-        "return_on_equity": m.get("roeTTM"),
-        "free_cashflow_per_share": m.get("freeCashFlowPerShareTTM"),
-        "debt_to_equity": m.get("debtToEquityTTM"),
+        "pe_ratio": pe,
+        "ev_to_ebitda": m.get("evToEBITDA"),
+        "ev_to_sales": m.get("evToSales"),
+        "return_on_equity": m.get("returnOnEquity"),
+        "return_on_assets": m.get("returnOnAssets"),
+        "return_on_invested_capital": m.get("returnOnInvestedCapital"),
+        "free_cashflow_yield": m.get("freeCashFlowYield"),
+        "current_ratio": m.get("currentRatio"),
+        "net_debt_to_ebitda": m.get("netDebtToEBITDA"),
     }
 
 
 async def fetch_financials(client: httpx.AsyncClient, ticker: str, limit: int = 4) -> dict[str, Any]:
-    """Annual income statement — last 4 years.
+    """Annual income statement — last N years.
 
-    Source: GET /api/v3/income-statement/{symbol}
+    Source: GET /stable/income-statement?symbol=&limit=
     """
-    data = await _get(
-        client, f"/api/v3/income-statement/{ticker}", period="annual", limit=limit
-    )
+    data = await _get(client, "/income-statement", symbol=ticker, limit=limit)
     if not data:
         return {}
 
@@ -112,7 +122,7 @@ async def fetch_financials(client: httpx.AsyncClient, ticker: str, limit: int = 
         gross_profit.append(row.get("grossProfit"))
         operating_income.append(row.get("operatingIncome"))
         net_income.append(row.get("netIncome"))
-        eps.append(row.get("eps"))
+        eps.append(row.get("epsDiluted"))
         ebitda.append(row.get("ebitda"))
 
     return {
@@ -127,11 +137,11 @@ async def fetch_financials(client: httpx.AsyncClient, ticker: str, limit: int = 
 
 
 async def fetch_scores(client: httpx.AsyncClient, ticker: str) -> dict[str, Any]:
-    """Piotroski F-Score and Altman Z-Score from FMP's pre-computed scores.
+    """Piotroski F-Score and Altman Z-Score (may be empty on free tier).
 
-    Source: GET /stable/scores
+    Source: GET /stable/scores?symbol=
     """
-    data = await _get(client, "/stable/scores", symbol=ticker)
+    data = await _get(client, "/financial-scores", symbol=ticker)
     if not data:
         return {}
     s = data[0]
@@ -142,11 +152,11 @@ async def fetch_scores(client: httpx.AsyncClient, ticker: str) -> dict[str, Any]
 
 
 async def fetch_news(client: httpx.AsyncClient, ticker: str, limit: int = 8) -> list[dict[str, Any]]:
-    """Recent news headlines and summaries.
+    """Recent news headlines. Returns [] if restricted on free tier.
 
-    Source: GET /api/v3/stock_news
+    Source: GET /stable/stock-news?tickers=&limit=
     """
-    data = await _get(client, "/api/v3/stock_news", tickers=ticker, limit=limit)
+    data = await _get(client, "/news", tickers=ticker, limit=limit)
     return [
         {
             "title": item.get("title", ""),
@@ -156,6 +166,7 @@ async def fetch_news(client: httpx.AsyncClient, ticker: str, limit: int = 8) -> 
             "summary": item.get("text", ""),
         }
         for item in (data or [])
+        if isinstance(item, dict)
     ]
 
 
@@ -163,14 +174,14 @@ async def fetch_analyst_ratings(client: httpx.AsyncClient, ticker: str) -> dict[
     """Analyst price targets and recommendation breakdown.
 
     Sources:
-      GET /api/v4/price-target-consensus
-      GET /api/v3/analyst-stock-recommendations/{symbol}
+      GET /stable/price-target-consensus?symbol=
+      GET /stable/analyst-stock-recommendations?symbol=
     """
     import asyncio
 
     targets_data, recs_data = await asyncio.gather(
-        _get(client, "/api/v4/price-target-consensus", symbol=ticker),
-        _get(client, f"/api/v3/analyst-stock-recommendations/{ticker}", limit=2),
+        _get(client, "/price-target-consensus", symbol=ticker),
+        _get(client, "/analyst-recommendation", symbol=ticker, limit=2),
     )
 
     targets = targets_data[0] if targets_data else {}
@@ -178,12 +189,13 @@ async def fetch_analyst_ratings(client: httpx.AsyncClient, ticker: str) -> dict[
         {
             "period": row.get("date", ""),
             "strong_buy": row.get("analystRatingsStrongBuy", 0),
-            "buy": row.get("analystRatingsbuy", 0),
+            "buy": row.get("analystRatingsBuy", 0),
             "hold": row.get("analystRatingsHold", 0),
             "sell": row.get("analystRatingsSell", 0),
             "strong_sell": row.get("analystRatingsStrongSell", 0),
         }
         for row in (recs_data or [])
+        if isinstance(row, dict)
     ]
 
     return {
