@@ -82,10 +82,17 @@ terraform apply -auto-approve \
 BOT_URL=$(terraform output -raw bot_url)
 cd ..
 
+echo "=== Step 8: Register Telegram webhook ==="
+TELEGRAM_BOT_TOKEN=$(grep '^TELEGRAM_BOT_TOKEN=' "${ROOT_DIR}/bot/.env" | cut -d= -f2-)
+WEBHOOK_RESP=$(curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook?url=${BOT_URL}/webhook")
+echo "  Response: ${WEBHOOK_RESP}"
+if echo "${WEBHOOK_RESP}" | python3 -c "import sys,json; d=json.load(sys.stdin); exit(0 if d.get('ok') else 1)"; then
+  echo "  Webhook registered: ${BOT_URL}/webhook"
+else
+  echo "  WARNING: webhook registration may have failed — check response above"
+fi
+
 echo "=== Done ==="
 echo ""
 echo "  API URL : ${API_URL}"
 echo "  Bot URL : ${BOT_URL}"
-echo ""
-echo "Next: register Telegram webhook:"
-echo "  curl -s 'https://api.telegram.org/bot<TOKEN>/setWebhook?url=${BOT_URL}/webhook'"
