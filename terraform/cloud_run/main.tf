@@ -41,7 +41,7 @@ locals {
 
 resource "google_project_iam_member" "cloudbuild_storage" {
   project = var.gcp_project_id
-  role    = "roles/storage.admin"
+  role    = "roles/storage.objectAdmin"
   member  = local.cloudbuild_sa
 }
 
