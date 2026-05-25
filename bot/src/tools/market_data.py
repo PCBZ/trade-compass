@@ -24,9 +24,7 @@ def _key() -> dict[str, str]:
 
 async def _get(client: httpx.AsyncClient, path: str, **params: Any) -> Any:
     """GET a /stable/ endpoint. Returns [] gracefully on 401/403/404 (free tier limits)."""
-    resp = await client.get(
-        f"{_BASE}{path}", params={**_key(), **params}, timeout=10
-    )
+    resp = await client.get(f"{_BASE}{path}", params={**_key(), **params}, timeout=10)
     if resp.status_code in (401, 403, 404):
         return []
     resp.raise_for_status()
@@ -38,6 +36,7 @@ async def _get(client: httpx.AsyncClient, path: str, **params: Any) -> Any:
 
 
 # ── One function per FMP endpoint ────────────────────────────────────────────
+
 
 async def fetch_quote(client: httpx.AsyncClient, ticker: str) -> dict[str, Any]:
     """Real-time price, market cap, 52-week range.
@@ -104,7 +103,9 @@ async def fetch_key_metrics(client: httpx.AsyncClient, ticker: str) -> dict[str,
     }
 
 
-async def fetch_financials(client: httpx.AsyncClient, ticker: str, limit: int = 4) -> dict[str, Any]:
+async def fetch_financials(
+    client: httpx.AsyncClient, ticker: str, limit: int = 4
+) -> dict[str, Any]:
     """Annual income statement — last N years.
 
     Source: GET /stable/income-statement?symbol=&limit=
@@ -151,7 +152,9 @@ async def fetch_scores(client: httpx.AsyncClient, ticker: str) -> dict[str, Any]
     }
 
 
-async def fetch_news(client: httpx.AsyncClient, ticker: str, limit: int = 8) -> list[dict[str, Any]]:
+async def fetch_news(
+    client: httpx.AsyncClient, ticker: str, limit: int = 8
+) -> list[dict[str, Any]]:
     """Recent news headlines. Returns [] if restricted on free tier.
 
     Source: GET /stable/stock-news?tickers=&limit=
@@ -170,7 +173,9 @@ async def fetch_news(client: httpx.AsyncClient, ticker: str, limit: int = 8) -> 
     ]
 
 
-async def fetch_analyst_ratings(client: httpx.AsyncClient, ticker: str) -> dict[str, Any]:
+async def fetch_analyst_ratings(
+    client: httpx.AsyncClient, ticker: str
+) -> dict[str, Any]:
     """Analyst price targets and recommendation breakdown.
 
     Sources:

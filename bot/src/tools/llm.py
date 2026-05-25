@@ -13,7 +13,7 @@ from typing import Any, Type
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
-from bot.config import get_default_model_id
+from ..config import get_default_model_id
 
 _OPENROUTER_BASE = "https://openrouter.ai/api/v1"
 

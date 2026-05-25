@@ -23,6 +23,7 @@ _config = _load()
 
 # ── LLM models ────────────────────────────────────────────────────────────────
 
+
 def get_llm_models() -> list[dict[str, Any]]:
     """Return all configured LLM models."""
     return _config["llm_models"]

@@ -43,15 +43,19 @@ def fetch_positions() -> list[dict]:
 
         holdings = []
         for _, row in data.iterrows():
-            holdings.append({
-                "symbol": row["code"].split(".")[-1],  # US.AAPL → AAPL
-                "name": row.get("stock_name", ""),
-                "qty": float(row["qty"]),
-                "avg_cost": float(row["cost_price"]),
-                "market_value": float(row["market_val"]),
-                "security_type": _SECURITY_TYPE_MAP.get(str(row.get("security_type", "")).upper(), "NONE"),
-                "currency": "USD",
-            })
+            holdings.append(
+                {
+                    "symbol": row["code"].split(".")[-1],  # US.AAPL → AAPL
+                    "name": row.get("stock_name", ""),
+                    "qty": float(row["qty"]),
+                    "avg_cost": float(row["cost_price"]),
+                    "market_value": float(row["market_val"]),
+                    "security_type": _SECURITY_TYPE_MAP.get(
+                        str(row.get("security_type", "")).upper(), "NONE"
+                    ),
+                    "currency": "USD",
+                }
+            )
         return holdings
     finally:
         ctx.close()

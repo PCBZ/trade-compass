@@ -6,8 +6,8 @@ import asyncio
 
 import httpx
 
-from bot.state import AnalysisState
-from bot.tools.market_data import (
+from ..state import AnalysisState
+from ..tools.market_data import (
     fetch_analyst_ratings,
     fetch_financials,
     fetch_key_metrics,
@@ -16,7 +16,7 @@ from bot.tools.market_data import (
     fetch_quote,
     fetch_scores,
 )
-from bot.tools.portfolio_api import get_holdings, get_preferences
+from ..tools.portfolio_api import get_holdings, get_preferences
 
 
 async def data_agent(state: AnalysisState) -> dict:

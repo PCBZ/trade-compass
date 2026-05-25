@@ -35,7 +35,7 @@ data "terraform_remote_state" "cloud_run" {
 
 # ── Image: reuse existing Artifact Registry repo ──────────────────────────────
 locals {
-  src_hash      = sha1(join("", [for f in sort(fileset("${path.root}/../../bot", "**")) : filesha1("${path.root}/../../bot/${f}")]))
+  src_hash      = sha1(join("", [for f in sort(fileset("${path.root}/../../bot/src", "**")) : filesha1("${path.root}/../../bot/src/${f}")]))
   image         = "${var.region}-docker.pkg.dev/${var.gcp_project_id}/trade-compass/bot:${local.src_hash}"
   cloudbuild_sa = "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
 }

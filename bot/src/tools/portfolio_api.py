@@ -29,7 +29,9 @@ async def get_holdings() -> list[dict[str, Any]]:
 async def get_preferences() -> dict[str, Any]:
     """GET /preferences — returns user risk/style/sector settings."""
     async with httpx.AsyncClient() as client:
-        resp = await client.get(f"{_API_URL}/preferences", headers=_headers(), timeout=10)
+        resp = await client.get(
+            f"{_API_URL}/preferences", headers=_headers(), timeout=10
+        )
         resp.raise_for_status()
         return resp.json()
 

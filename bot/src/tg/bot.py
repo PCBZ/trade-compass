@@ -16,7 +16,7 @@ from telegram.ext import (
     CommandHandler,
 )
 
-from bot.tg.handlers import (
+from .handlers import (
     handle_decide,
     handle_help,
     handle_model,
@@ -25,6 +25,7 @@ from bot.tg.handlers import (
 )
 
 # ── Telegram Application (singleton) ─────────────────────────────────────────
+
 
 def build_application() -> Application:
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "")

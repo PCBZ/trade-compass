@@ -11,14 +11,15 @@ from __future__ import annotations
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
-from bot.config import get_llm_models, is_valid_model
-from bot.graph.workflow import graph, single_stock_graph
-from bot.tools.portfolio_api import get_preferences, get_holdings
+from ..config import get_llm_models, is_valid_model
+from ..graph.workflow import graph, single_stock_graph
+from ..tools.portfolio_api import get_preferences, get_holdings
 import httpx
 import os
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _esc(text: str) -> str:
     """Escape HTML special characters for Telegram HTML parse mode."""
@@ -26,12 +27,12 @@ def _esc(text: str) -> str:
 
 
 def _format_decision(ticker: str, decision: dict) -> str:
-    verdict     = decision.get("verdict", "N/A")
-    confidence  = decision.get("confidence", "")
-    thesis      = decision.get("thesis", "")
+    verdict = decision.get("verdict", "N/A")
+    confidence = decision.get("confidence", "")
+    thesis = decision.get("thesis", "")
     assumptions = decision.get("key_assumptions", [])
-    stop_loss   = decision.get("stop_loss")
-    target      = decision.get("target_price")
+    stop_loss = decision.get("stop_loss")
+    target = decision.get("target_price")
 
     emoji = {"BUY": "🟢", "HOLD": "🟡", "SELL": "🔴"}.get(verdict, "⚪")
 
@@ -53,9 +54,9 @@ def _format_decision(ticker: str, decision: dict) -> str:
 
 def _format_portfolio_summary(summary: dict) -> str:
     verdicts = summary.get("verdicts", [])
-    risks    = summary.get("concentration_risk", [])
+    risks = summary.get("concentration_risk", [])
     analyzed = summary.get("analyzed_count", 0)
-    total    = summary.get("holdings_count", 0)
+    total = summary.get("holdings_count", 0)
 
     lines = [f"📁 <b>Portfolio Analysis</b> ({analyzed}/{total} stocks)\n"]
 
@@ -70,14 +71,16 @@ def _format_portfolio_summary(summary: dict) -> str:
     if risks:
         lines.append("\n⚠️ <b>Concentration Risk</b>")
         for r in risks:
-            lines.append(f"  • {_esc(r['ticker'])} {r['weight_pct']}% — {_esc(r['flag'])}")
+            lines.append(
+                f"  • {_esc(r['ticker'])} {r['weight_pct']}% — {_esc(r['flag'])}"
+            )
 
     return "\n".join(lines)
 
 
 async def _get_initial_state(ticker: str | None, mode: str) -> dict:
     preferences = await get_preferences()
-    holdings    = await get_holdings()
+    holdings = await get_holdings()
     return {
         "ticker": ticker,
         "mode": mode,
@@ -94,6 +97,7 @@ async def _get_initial_state(ticker: str | None, mode: str) -> dict:
 
 # ── Command handlers ──────────────────────────────────────────────────────────
 
+
 async def handle_decide(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/decide NVDA — single-stock analysis."""
     args = context.args
@@ -105,7 +109,9 @@ async def handle_decide(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     ticker = args[0].upper()
-    await update.message.reply_text(f"🔍 Analysing <b>{_esc(ticker)}</b>...", parse_mode="HTML")
+    await update.message.reply_text(
+        f"🔍 Analysing <b>{_esc(ticker)}</b>...", parse_mode="HTML"
+    )
 
     try:
         state = await _get_initial_state(ticker, "single")
@@ -165,7 +171,9 @@ async def handle_model(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
 
 
-async def handle_model_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_model_selection(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
     """Inline keyboard callback — saves selected model to preferences."""
     query = update.callback_query
     await query.answer()
@@ -200,7 +208,9 @@ async def handle_model_selection(update: Update, context: ContextTypes.DEFAULT_T
 
     models = get_llm_models()
     name = next((m["name"] for m in models if m["id"] == model_id), model_id)
-    await query.edit_message_text(f"✅ Model set to <b>{_esc(name)}</b>", parse_mode="HTML")
+    await query.edit_message_text(
+        f"✅ Model set to <b>{_esc(name)}</b>", parse_mode="HTML"
+    )
 
 
 async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

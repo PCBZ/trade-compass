@@ -7,7 +7,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy bot source as a package: /app/bot/
-COPY . ./bot/
+COPY src/ ./bot/
 
 ENV PYTHONUNBUFFERED=1
 

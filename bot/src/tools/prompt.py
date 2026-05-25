@@ -19,24 +19,26 @@ def build_decision_prompt(
     f = fundamental
     s = sentiment
 
-    scores    = f.get("scores", {})
+    scores = f.get("scores", {})
     valuation = f.get("valuation", {})
-    growth    = f.get("growth", {})
-    quality   = f.get("quality", {})
+    growth = f.get("growth", {})
+    quality = f.get("quality", {})
 
-    analyst   = s.get("analyst", {})
-    timing    = s.get("timing", {})
-    news      = s.get("news", [])
-    targets   = analyst.get("price_targets", {})
-    recs      = (analyst.get("recommendations") or [{}])[0]
+    analyst = s.get("analyst", {})
+    timing = s.get("timing", {})
+    news = s.get("news", [])
+    targets = analyst.get("price_targets", {})
+    recs = (analyst.get("recommendations") or [{}])[0]
 
-    headlines = "\n".join(
-        f"  - [{n.get('publisher', '')}] {n.get('title', '')}"
-        for n in news[:5]
-    ) or "  No recent news."
+    headlines = (
+        "\n".join(
+            f"  - [{n.get('publisher', '')}] {n.get('title', '')}" for n in news[:5]
+        )
+        or "  No recent news."
+    )
 
     piotroski = scores.get("piotroski")
-    altman_z  = scores.get("altman_z")
+    altman_z = scores.get("altman_z")
 
     return f"""You are a senior equity analyst. Analyse the following data and provide a structured investment verdict.
 

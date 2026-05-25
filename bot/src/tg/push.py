@@ -19,16 +19,16 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from telegram import Bot
 
-from bot.graph.workflow import graph
-from bot.tg.handlers import _format_portfolio_summary, _get_initial_state
+from ..graph.workflow import graph
+from .handlers import _format_portfolio_summary, _get_initial_state
 
 push_router = APIRouter()
 
 _PUSH_TYPES = {
-    "pre_market":  "🌅 <b>Pre-market Brief</b> (9:25 AM ET)",
-    "morning":     "☀️ <b>Morning Update</b> (11:00 AM ET)",
-    "noon":        "🌤 <b>Midday Check</b> (12:30 PM ET)",
-    "afternoon":   "🌥 <b>Afternoon Update</b> (2:30 PM ET)",
+    "pre_market": "🌅 <b>Pre-market Brief</b> (9:25 AM ET)",
+    "morning": "☀️ <b>Morning Update</b> (11:00 AM ET)",
+    "noon": "🌤 <b>Midday Check</b> (12:30 PM ET)",
+    "afternoon": "🌥 <b>Afternoon Update</b> (2:30 PM ET)",
     "post_market": "🌆 <b>Closing Summary</b> (4:05 PM ET)",
 }
 
@@ -47,11 +47,11 @@ async def push(request: Request, body: PushRequest) -> dict:
         )
 
     chat_id = os.environ.get("TELEGRAM_CHAT_ID")
-    token   = os.environ.get("TELEGRAM_BOT_TOKEN")
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not chat_id or not token:
         raise HTTPException(status_code=500, detail="TELEGRAM_CHAT_ID or TOKEN not set")
 
-    state  = await _get_initial_state(None, "portfolio")
+    state = await _get_initial_state(None, "portfolio")
     result = await graph.ainvoke(state)
 
     summary = result.get("portfolio_summary") or {}
@@ -59,7 +59,7 @@ async def push(request: Request, body: PushRequest) -> dict:
         return {"sent": False, "reason": "no stock positions"}
 
     header = _PUSH_TYPES[body.type]
-    text   = f"{header}\n\n{_format_portfolio_summary(summary)}"
+    text = f"{header}\n\n{_format_portfolio_summary(summary)}"
 
     bot = Bot(token=token)
     await bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")

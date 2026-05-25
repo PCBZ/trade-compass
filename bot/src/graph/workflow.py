@@ -15,15 +15,16 @@ from __future__ import annotations
 
 from langgraph.graph import END, START, StateGraph
 
-from bot.agents.data import data_agent
-from bot.agents.decision import decision_agent
-from bot.agents.fundamental import fundamental_agent
-from bot.agents.portfolio import portfolio_agent
-from bot.agents.sentiment import sentiment_agent
-from bot.state import AnalysisState
+from ..agents.data import data_agent
+from ..agents.decision import decision_agent
+from ..agents.fundamental import fundamental_agent
+from ..agents.portfolio import portfolio_agent
+from ..agents.sentiment import sentiment_agent
+from ..state import AnalysisState
 
 
 # ── Routing edge ──────────────────────────────────────────────────────────────
+
 
 def route_intent(state: AnalysisState) -> str:
     """Conditional edge: branch on analysis mode."""
@@ -34,6 +35,7 @@ def route_intent(state: AnalysisState) -> str:
 
 # ── After data_agent: fan out to both analysis agents in parallel ─────────────
 
+
 def after_data(state: AnalysisState) -> list[str]:
     """Fan-out edge: run fundamental and sentiment agents in parallel."""
     if state.get("error"):
@@ -42,6 +44,7 @@ def after_data(state: AnalysisState) -> list[str]:
 
 
 # ── Single-stock subgraph (reused by portfolio_agent) ────────────────────────
+
 
 def build_single_stock_graph() -> StateGraph:
     builder = StateGraph(AnalysisState)
@@ -52,11 +55,15 @@ def build_single_stock_graph() -> StateGraph:
     builder.add_node("decision_agent", decision_agent)
 
     builder.add_edge(START, "data_agent")
-    builder.add_conditional_edges("data_agent", after_data, {
-        "fundamental_agent": "fundamental_agent",
-        "sentiment_agent": "sentiment_agent",
-        END: END,
-    })
+    builder.add_conditional_edges(
+        "data_agent",
+        after_data,
+        {
+            "fundamental_agent": "fundamental_agent",
+            "sentiment_agent": "sentiment_agent",
+            END: END,
+        },
+    )
     builder.add_edge("fundamental_agent", "decision_agent")
     builder.add_edge("sentiment_agent", "decision_agent")
     builder.add_edge("decision_agent", END)
@@ -65,6 +72,7 @@ def build_single_stock_graph() -> StateGraph:
 
 
 # ── Full graph (main entry point) ─────────────────────────────────────────────
+
 
 def build_graph() -> StateGraph:
     builder = StateGraph(AnalysisState)
@@ -75,16 +83,24 @@ def build_graph() -> StateGraph:
     builder.add_node("decision_agent", decision_agent)
     builder.add_node("portfolio_agent", portfolio_agent)
 
-    builder.add_conditional_edges(START, route_intent, {
-        "data_agent": "data_agent",
-        "portfolio_agent": "portfolio_agent",
-        END: END,
-    })
-    builder.add_conditional_edges("data_agent", after_data, {
-        "fundamental_agent": "fundamental_agent",
-        "sentiment_agent": "sentiment_agent",
-        END: END,
-    })
+    builder.add_conditional_edges(
+        START,
+        route_intent,
+        {
+            "data_agent": "data_agent",
+            "portfolio_agent": "portfolio_agent",
+            END: END,
+        },
+    )
+    builder.add_conditional_edges(
+        "data_agent",
+        after_data,
+        {
+            "fundamental_agent": "fundamental_agent",
+            "sentiment_agent": "sentiment_agent",
+            END: END,
+        },
+    )
     builder.add_edge("fundamental_agent", "decision_agent")
     builder.add_edge("sentiment_agent", "decision_agent")
     builder.add_edge("decision_agent", END)

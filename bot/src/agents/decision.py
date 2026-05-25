@@ -11,13 +11,14 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
-from bot.state import AnalysisState
-from bot.tools.llm import get_llm
-from bot.tools.portfolio_api import post_decision
-from bot.tools.prompt import build_decision_prompt
+from ..state import AnalysisState
+from ..tools.llm import get_llm
+from ..tools.portfolio_api import post_decision
+from ..tools.prompt import build_decision_prompt
 
 
 # ── Structured output schema ──────────────────────────────────────────────────
+
 
 class DecisionOutput(BaseModel):
     verdict: Literal["BUY", "HOLD", "SELL", "INSUFFICIENT_DATA"] = Field(
@@ -33,16 +34,15 @@ class DecisionOutput(BaseModel):
         description="2-3 key assumptions this verdict depends on"
     )
     stop_loss: Optional[float] = Field(
-        default=None,
-        description="Suggested stop-loss price. Null if not applicable."
+        default=None, description="Suggested stop-loss price. Null if not applicable."
     )
     target_price: Optional[float] = Field(
-        default=None,
-        description="12-month price target. Null if insufficient data."
+        default=None, description="12-month price target. Null if insufficient data."
     )
 
 
 # ── Agent ─────────────────────────────────────────────────────────────────────
+
 
 async def decision_agent(state: AnalysisState) -> dict:
     """
@@ -50,11 +50,11 @@ async def decision_agent(state: AnalysisState) -> dict:
     calls OpenRouter LLM with structured output, persists result to REST API.
     Writes: decision
     """
-    ticker       = state.get("ticker", "")
-    raw          = state.get("raw_data", {})
-    fundamental  = state.get("fundamental_analysis", {})
-    sentiment    = state.get("sentiment_analysis", {})
-    preferences  = state.get("preferences", {})
+    ticker = state.get("ticker", "")
+    raw = state.get("raw_data", {})
+    fundamental = state.get("fundamental_analysis", {})
+    sentiment = state.get("sentiment_analysis", {})
+    preferences = state.get("preferences", {})
 
     try:
         prompt = build_decision_prompt(

@@ -6,7 +6,7 @@ which interprets sentiment and timing in light of industry/narrative context.
 
 from __future__ import annotations
 
-from bot.state import AnalysisState
+from ..state import AnalysisState
 
 
 async def sentiment_agent(state: AnalysisState) -> dict:
@@ -15,14 +15,14 @@ async def sentiment_agent(state: AnalysisState) -> dict:
     Writes: sentiment_analysis
     """
     raw = state.get("raw_data", {})
-    quote   = raw.get("quote", {})
+    quote = raw.get("quote", {})
     analyst = raw.get("analyst", {})
-    news    = raw.get("news", [])
+    news = raw.get("news", [])
 
-    price       = quote.get("current_price")
-    high_52     = quote.get("fifty_two_week_high")
-    low_52      = quote.get("fifty_two_week_low")
-    targets     = analyst.get("price_targets", {})
+    price = quote.get("current_price")
+    high_52 = quote.get("fifty_two_week_high")
+    low_52 = quote.get("fifty_two_week_low")
+    targets = analyst.get("price_targets", {})
     mean_target = targets.get("mean")
 
     # Price position in 52-week range (0 = at low, 1 = at high)
