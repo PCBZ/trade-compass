@@ -53,7 +53,7 @@ ENV_FILE="${ROOT_DIR}/bot/.env"
 set_env() {
   local key="$1" val="$2"
   local tmp
-  tmp="$(mktemp)"
+  tmp="$(mktemp "${TMPDIR:-/tmp}/trade-compass.XXXXXX")"
   if grep -q "^${key}=" "${ENV_FILE}" 2>/dev/null; then
     # Copy every line except the matching key, then append updated key=val
     grep -v "^${key}=" "${ENV_FILE}" > "${tmp}"
