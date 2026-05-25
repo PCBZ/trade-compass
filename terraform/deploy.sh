@@ -95,15 +95,22 @@ TELEGRAM_BOT_TOKEN=$(grep '^TELEGRAM_BOT_TOKEN=' "${ROOT_DIR}/bot/.env" | cut -d
 
 # Wait for bot Cloud Run to be healthy before registering webhook
 echo "  Waiting for bot service to be healthy..."
+HEALTHY=0
 for i in $(seq 1 12); do
   STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${BOT_URL}/health" 2>/dev/null || echo "000")
   if [ "${STATUS}" = "200" ]; then
     echo "  Bot service is healthy (attempt ${i})"
+    HEALTHY=1
     break
   fi
   echo "  Attempt ${i}/12: status=${STATUS}, retrying in 10s..."
   sleep 10
 done
+
+if [ "${HEALTHY}" != "1" ]; then
+  echo "ERROR: Bot service never became healthy after 120s. Aborting webhook registration."
+  exit 1
+fi
 
 # Token is passed in the URL path (Telegram API requirement), but we avoid
 # echoing the full URL to logs to reduce accidental token exposure.
