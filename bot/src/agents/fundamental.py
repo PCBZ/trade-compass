@@ -42,10 +42,9 @@ async def fundamental_agent(state: AnalysisState) -> dict:
             },
             # Valuation
             "valuation": {
-                "trailing_pe": quote.get("trailing_pe"),
-                "forward_pe": key_metrics.get("forward_pe"),
+                "pe_ratio": key_metrics.get("pe_ratio"),
                 "ev_to_ebitda": key_metrics.get("ev_to_ebitda"),
-                "price_to_book": key_metrics.get("price_to_book"),
+                "ev_to_sales": key_metrics.get("ev_to_sales"),
                 "market_cap": quote.get("market_cap"),
             },
             # Growth
@@ -58,8 +57,10 @@ async def fundamental_agent(state: AnalysisState) -> dict:
             # Quality
             "quality": {
                 "return_on_equity": key_metrics.get("return_on_equity"),
-                "free_cashflow_per_share": key_metrics.get("free_cashflow_per_share"),
-                "debt_to_equity": key_metrics.get("debt_to_equity"),
+                "return_on_invested_capital": key_metrics.get("return_on_invested_capital"),
+                "free_cashflow_yield": key_metrics.get("free_cashflow_yield"),
+                "net_debt_to_ebitda": key_metrics.get("net_debt_to_ebitda"),
+                "current_ratio": key_metrics.get("current_ratio"),
             },
         }
     }

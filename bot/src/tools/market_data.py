@@ -69,6 +69,7 @@ async def fetch_profile(client: httpx.AsyncClient, ticker: str) -> dict[str, Any
         return {}
     p = data[0]
     return {
+        "name": p.get("companyName", ""),
         "sector": p.get("sector", ""),
         "industry": p.get("industry", ""),
         "beta": p.get("beta"),
@@ -140,7 +141,7 @@ async def fetch_financials(
 async def fetch_scores(client: httpx.AsyncClient, ticker: str) -> dict[str, Any]:
     """Piotroski F-Score and Altman Z-Score (may be empty on free tier).
 
-    Source: GET /stable/scores?symbol=
+    Source: GET /stable/financial-scores?symbol=
     """
     data = await _get(client, "/financial-scores", symbol=ticker)
     if not data:
@@ -157,7 +158,7 @@ async def fetch_news(
 ) -> list[dict[str, Any]]:
     """Recent news headlines. Returns [] if restricted on free tier.
 
-    Source: GET /stable/stock-news?tickers=&limit=
+    Source: GET /stable/news?tickers=&limit=
     """
     data = await _get(client, "/news", tickers=ticker, limit=limit)
     return [
@@ -180,7 +181,7 @@ async def fetch_analyst_ratings(
 
     Sources:
       GET /stable/price-target-consensus?symbol=
-      GET /stable/analyst-stock-recommendations?symbol=
+      GET /stable/analyst-recommendation?symbol=
     """
     import asyncio
 

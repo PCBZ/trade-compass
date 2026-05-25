@@ -80,6 +80,6 @@ class Preferences(BaseModel):
         default=0.1, description="Max single position as fraction of portfolio (0–1)"
     )
     llm_model: str = Field(
-        default="meta-llama/llama-3.3-70b-instruct:free",
+        default="",
         description="LLM model for analysis. Configured in bot/config.json.",
     )

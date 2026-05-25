@@ -251,7 +251,7 @@ resource "google_cloud_scheduler_job" "push" {
   name             = "trade-compass-push-${each.key}"
   description      = "trade-compass bot ${each.key} push"
   schedule         = each.value
-  time_zone        = "America/New_York"
+  time_zone        = "UTC"
   attempt_deadline = "180s"
 
   http_target {
