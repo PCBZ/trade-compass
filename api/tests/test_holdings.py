@@ -15,30 +15,30 @@ _holding = {
 
 @pytest.mark.asyncio
 async def test_list_empty(client):
-    r = await client.get("/holdings/", headers=HEADERS)
+    r = await client.get("/holdings", headers=HEADERS)
     assert r.status_code == 200
     assert r.json() == []
 
 
 @pytest.mark.asyncio
 async def test_upsert_returns_count(client):
-    r = await client.post("/holdings/", json=[_holding, {**_holding, "symbol": "NVDA"}], headers=HEADERS)
+    r = await client.post("/holdings", json=[_holding, {**_holding, "symbol": "NVDA"}], headers=HEADERS)
     assert r.status_code == 201
     assert r.json() == {"upserted": 2}
 
 
 @pytest.mark.asyncio
 async def test_list_after_upsert(client):
-    await client.post("/holdings/", json=[_holding], headers=HEADERS)
-    r = await client.get("/holdings/", headers=HEADERS)
+    await client.post("/holdings", json=[_holding], headers=HEADERS)
+    r = await client.get("/holdings", headers=HEADERS)
     assert len(r.json()) == 1
     assert r.json()[0]["symbol"] == "AAPL"
 
 
 @pytest.mark.asyncio
 async def test_upsert_deduplicates(client):
-    await client.post("/holdings/", json=[_holding], headers=HEADERS)
-    await client.post("/holdings/", json=[{**_holding, "qty": 20.0}], headers=HEADERS)
-    r = await client.get("/holdings/", headers=HEADERS)
+    await client.post("/holdings", json=[_holding], headers=HEADERS)
+    await client.post("/holdings", json=[{**_holding, "qty": 20.0}], headers=HEADERS)
+    r = await client.get("/holdings", headers=HEADERS)
     assert len(r.json()) == 1
     assert r.json()[0]["qty"] == 20.0
