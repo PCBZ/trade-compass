@@ -20,6 +20,11 @@ import os
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+def _esc(text: str) -> str:
+    """Escape HTML special characters for Telegram HTML parse mode."""
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def _format_decision(ticker: str, decision: dict) -> str:
     verdict     = decision.get("verdict", "N/A")
     confidence  = decision.get("confidence", "")
@@ -31,13 +36,13 @@ def _format_decision(ticker: str, decision: dict) -> str:
     emoji = {"BUY": "🟢", "HOLD": "🟡", "SELL": "🔴"}.get(verdict, "⚪")
 
     lines = [
-        f"{emoji} *{ticker}* — {verdict} ({confidence})",
-        f"_{thesis}_",
+        f"{emoji} <b>{_esc(ticker)}</b> — {_esc(verdict)} ({_esc(confidence)})",
+        f"<i>{_esc(thesis)}</i>",
     ]
     if assumptions:
-        lines.append("\n*Key assumptions:*")
+        lines.append("\n<b>Key assumptions:</b>")
         for a in assumptions:
-            lines.append(f"  • {a}")
+            lines.append(f"  • {_esc(str(a))}")
     if stop_loss:
         lines.append(f"\n🛑 Stop-loss: ${stop_loss:.2f}")
     if target:
@@ -52,20 +57,20 @@ def _format_portfolio_summary(summary: dict) -> str:
     analyzed = summary.get("analyzed_count", 0)
     total    = summary.get("holdings_count", 0)
 
-    lines = [f"📁 *Portfolio Analysis* ({analyzed}/{total} stocks)\n"]
+    lines = [f"📁 <b>Portfolio Analysis</b> ({analyzed}/{total} stocks)\n"]
 
     for v in verdicts:
         emoji = {"BUY": "🟢", "HOLD": "🟡", "SELL": "🔴"}.get(v.get("verdict"), "⚪")
         lines.append(
-            f"{emoji} *{v['ticker']}* — {v.get('verdict')} ({v.get('confidence', '')})"
+            f"{emoji} <b>{_esc(v['ticker'])}</b> — {_esc(v.get('verdict', ''))} ({_esc(v.get('confidence', ''))})"
         )
         if v.get("thesis"):
-            lines.append(f"   _{v['thesis'][:120]}..._")
+            lines.append(f"   <i>{_esc(v['thesis'][:120])}...</i>")
 
     if risks:
-        lines.append("\n⚠️ *Concentration Risk*")
+        lines.append("\n⚠️ <b>Concentration Risk</b>")
         for r in risks:
-            lines.append(f"  • {r['ticker']} {r['weight_pct']}% — {r['flag']}")
+            lines.append(f"  • {_esc(r['ticker'])} {r['weight_pct']}% — {_esc(r['flag'])}")
 
     return "\n".join(lines)
 
@@ -94,13 +99,13 @@ async def handle_decide(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     args = context.args
     if not args:
         await update.message.reply_text(
-            "Usage: `/decide TICKER` e.g. `/decide NVDA`",
-            parse_mode="Markdown",
+            "Usage: <code>/decide TICKER</code> e.g. <code>/decide NVDA</code>",
+            parse_mode="HTML",
         )
         return
 
     ticker = args[0].upper()
-    await update.message.reply_text(f"🔍 Analysing *{ticker}*...", parse_mode="Markdown")
+    await update.message.reply_text(f"🔍 Analysing <b>{_esc(ticker)}</b>...", parse_mode="HTML")
 
     try:
         state = await _get_initial_state(ticker, "single")
@@ -111,7 +116,7 @@ async def handle_decide(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             return
 
         text = _format_decision(ticker, result.get("decision") or {})
-        await update.message.reply_text(text, parse_mode="Markdown")
+        await update.message.reply_text(text, parse_mode="HTML")
 
     except Exception as exc:  # noqa: BLE001
         await update.message.reply_text(f"❌ Analysis failed: {exc}")
@@ -119,7 +124,7 @@ async def handle_decide(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 async def handle_portfolio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/portfolio — analyse all STOCK holdings."""
-    await update.message.reply_text("📁 Analysing your portfolio...", parse_mode="Markdown")
+    await update.message.reply_text("📁 Analysing your portfolio...", parse_mode="HTML")
 
     try:
         state = await _get_initial_state(None, "portfolio")
@@ -135,7 +140,7 @@ async def handle_portfolio(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             return
 
         text = _format_portfolio_summary(summary)
-        await update.message.reply_text(text, parse_mode="Markdown")
+        await update.message.reply_text(text, parse_mode="HTML")
 
     except Exception as exc:  # noqa: BLE001
         await update.message.reply_text(f"❌ Portfolio analysis failed: {exc}")
@@ -154,9 +159,9 @@ async def handle_model(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
-        "🤖 *Select LLM model for analysis:*",
+        "🤖 <b>Select LLM model for analysis:</b>",
         reply_markup=reply_markup,
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
 
@@ -195,16 +200,16 @@ async def handle_model_selection(update: Update, context: ContextTypes.DEFAULT_T
 
     models = get_llm_models()
     name = next((m["name"] for m in models if m["id"] == model_id), model_id)
-    await query.edit_message_text(f"✅ Model set to *{name}*", parse_mode="Markdown")
+    await query.edit_message_text(f"✅ Model set to <b>{_esc(name)}</b>", parse_mode="HTML")
 
 
 async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/help — list available commands."""
     text = (
-        "📊 *trade-compass*\n\n"
-        "/decide `TICKER` — analyse a single stock\n"
+        "📊 <b>trade-compass</b>\n\n"
+        "/decide <code>TICKER</code> — analyse a single stock\n"
         "/portfolio — analyse all your holdings\n"
         "/model — select LLM model\n"
         "/help — show this message"
     )
-    await update.message.reply_text(text, parse_mode="Markdown")
+    await update.message.reply_text(text, parse_mode="HTML")

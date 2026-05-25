@@ -84,6 +84,19 @@ cd ..
 
 echo "=== Step 8: Register Telegram webhook ==="
 TELEGRAM_BOT_TOKEN=$(grep '^TELEGRAM_BOT_TOKEN=' "${ROOT_DIR}/bot/.env" | cut -d= -f2-)
+
+# Wait for bot Cloud Run to be healthy before registering webhook
+echo "  Waiting for bot service to be healthy..."
+for i in $(seq 1 12); do
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${BOT_URL}/health" 2>/dev/null || echo "000")
+  if [ "${STATUS}" = "200" ]; then
+    echo "  Bot service is healthy (attempt ${i})"
+    break
+  fi
+  echo "  Attempt ${i}/12: status=${STATUS}, retrying in 10s..."
+  sleep 10
+done
+
 WEBHOOK_RESP=$(curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook?url=${BOT_URL}/webhook")
 echo "  Response: ${WEBHOOK_RESP}"
 if echo "${WEBHOOK_RESP}" | python3 -c "import sys,json; d=json.load(sys.stdin); exit(0 if d.get('ok') else 1)"; then

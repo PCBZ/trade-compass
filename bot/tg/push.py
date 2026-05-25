@@ -25,11 +25,11 @@ from bot.tg.handlers import _format_portfolio_summary, _get_initial_state
 push_router = APIRouter()
 
 _PUSH_TYPES = {
-    "pre_market":  "🌅 *Pre-market Brief* (9:25 AM ET)",
-    "morning":     "☀️ *Morning Update* (11:00 AM ET)",
-    "noon":        "🌤 *Midday Check* (12:30 PM ET)",
-    "afternoon":   "🌥 *Afternoon Update* (2:30 PM ET)",
-    "post_market": "🌆 *Closing Summary* (4:05 PM ET)",
+    "pre_market":  "🌅 <b>Pre-market Brief</b> (9:25 AM ET)",
+    "morning":     "☀️ <b>Morning Update</b> (11:00 AM ET)",
+    "noon":        "🌤 <b>Midday Check</b> (12:30 PM ET)",
+    "afternoon":   "🌥 <b>Afternoon Update</b> (2:30 PM ET)",
+    "post_market": "🌆 <b>Closing Summary</b> (4:05 PM ET)",
 }
 
 
@@ -62,6 +62,6 @@ async def push(request: Request, body: PushRequest) -> dict:
     text   = f"{header}\n\n{_format_portfolio_summary(summary)}"
 
     bot = Bot(token=token)
-    await bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
+    await bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
 
     return {"sent": True, "tickers": [v["ticker"] for v in summary["verdicts"]]}

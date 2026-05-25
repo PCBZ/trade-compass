@@ -28,7 +28,7 @@ def build_decision_prompt(
     timing    = s.get("timing", {})
     news      = s.get("news", [])
     targets   = analyst.get("price_targets", {})
-    recs      = analyst.get("recommendations", [{}])[0]
+    recs      = (analyst.get("recommendations") or [{}])[0]
 
     headlines = "\n".join(
         f"  - [{n.get('publisher', '')}] {n.get('title', '')}"
