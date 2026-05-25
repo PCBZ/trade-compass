@@ -57,7 +57,9 @@ async def fundamental_agent(state: AnalysisState) -> dict:
             # Quality
             "quality": {
                 "return_on_equity": key_metrics.get("return_on_equity"),
-                "return_on_invested_capital": key_metrics.get("return_on_invested_capital"),
+                "return_on_invested_capital": key_metrics.get(
+                    "return_on_invested_capital"
+                ),
                 "free_cashflow_yield": key_metrics.get("free_cashflow_yield"),
                 "net_debt_to_ebitda": key_metrics.get("net_debt_to_ebitda"),
                 "current_ratio": key_metrics.get("current_ratio"),

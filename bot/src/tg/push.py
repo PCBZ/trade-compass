@@ -49,7 +49,9 @@ async def push(request: Request, body: PushRequest) -> dict:
     chat_id = os.environ.get("TELEGRAM_CHAT_ID")
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not chat_id or not token:
-        raise HTTPException(status_code=500, detail="TELEGRAM_CHAT_ID or TELEGRAM_BOT_TOKEN not set")
+        raise HTTPException(
+            status_code=500, detail="TELEGRAM_CHAT_ID or TELEGRAM_BOT_TOKEN not set"
+        )
 
     state = await _get_initial_state(None, "portfolio")
     result = await graph.ainvoke(state)
