@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
 
-from bot.tools.market_data import (
+from bot.tools.market_data import (  # noqa: E402
     fetch_quote,
     fetch_profile,
     fetch_key_metrics,
