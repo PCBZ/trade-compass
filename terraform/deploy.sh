@@ -47,14 +47,22 @@ echo "=== Step 6: Update bot/.env with terraform outputs ==="
 API_KEY=$(cd cloud_run && terraform output -raw api_key)
 ENV_FILE="${ROOT_DIR}/bot/.env"
 
-# Helper: set or replace a key in bot/.env, preserving all other lines
+# Helper: set or replace a key in bot/.env, preserving all other lines.
+# Portable (macOS + Linux): rewrites file via temp file instead of sed -i.
+# Values are written as-is via printf to avoid sed special-char issues.
 set_env() {
   local key="$1" val="$2"
+  local tmp
+  tmp="$(mktemp)"
   if grep -q "^${key}=" "${ENV_FILE}" 2>/dev/null; then
-    sed -i '' "s|^${key}=.*|${key}=${val}|" "${ENV_FILE}"
+    # Copy every line except the matching key, then append updated key=val
+    grep -v "^${key}=" "${ENV_FILE}" > "${tmp}"
+    printf '%s=%s\n' "${key}" "${val}" >> "${tmp}"
   else
-    echo "${key}=${val}" >> "${ENV_FILE}"
+    cp "${ENV_FILE}" "${tmp}"
+    printf '%s=%s\n' "${key}" "${val}" >> "${tmp}"
   fi
+  mv "${tmp}" "${ENV_FILE}"
 }
 
 touch "${ENV_FILE}"
@@ -97,12 +105,16 @@ for i in $(seq 1 12); do
   sleep 10
 done
 
-WEBHOOK_RESP=$(curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook?url=${BOT_URL}/webhook")
-echo "  Response: ${WEBHOOK_RESP}"
+# Token is passed in the URL path (Telegram API requirement), but we avoid
+# echoing the full URL to logs to reduce accidental token exposure.
+WEBHOOK_RESP=$(curl -s \
+  --url "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
+  --data-urlencode "url=${BOT_URL}/webhook")
 if echo "${WEBHOOK_RESP}" | python3 -c "import sys,json; d=json.load(sys.stdin); exit(0 if d.get('ok') else 1)"; then
   echo "  Webhook registered: ${BOT_URL}/webhook"
 else
-  echo "  WARNING: webhook registration may have failed — check response above"
+  echo "  WARNING: webhook registration may have failed"
+  echo "  Response: ${WEBHOOK_RESP}"
 fi
 
 echo "=== Done ==="
