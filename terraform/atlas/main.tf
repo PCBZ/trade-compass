@@ -21,6 +21,7 @@ data "terraform_remote_state" "compute_engine" {
   }
 }
 
+
 # ── Project ───────────────────────────────────────────────────
 resource "mongodbatlas_project" "trade_compass" {
   name   = var.project_name
@@ -58,9 +59,10 @@ resource "mongodbatlas_project_ip_access_list" "compute_engine" {
   comment    = "Compute Engine static IP"
 }
 
-# Cloud Run uses dynamic egress IPs — allow all so the API can reach Atlas
-resource "mongodbatlas_project_ip_access_list" "allow_all" {
+# M0 free tier does not support VPC peering or private endpoints.
+# Real security is the credentials stored in Secret Manager.
+resource "mongodbatlas_project_ip_access_list" "cloud_run" {
   project_id = mongodbatlas_project.trade_compass.id
   cidr_block = "0.0.0.0/0"
-  comment    = "Cloud Run dynamic egress IPs"
+  comment    = "Cloud Run egress — M0 does not support VPC peering; auth via Secret Manager"
 }
