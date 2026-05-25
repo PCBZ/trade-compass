@@ -15,10 +15,10 @@ from fastapi import FastAPI
 
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
-from .tg.bot import webhook_router  # noqa: E402
+from .tg.bot import lifespan, webhook_router  # noqa: E402
 from .tg.push import push_router  # noqa: E402
 
-app = FastAPI(title="trade-compass-bot")
+app = FastAPI(title="trade-compass-bot", lifespan=lifespan)
 
 app.include_router(webhook_router)
 app.include_router(push_router)
