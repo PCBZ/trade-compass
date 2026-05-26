@@ -69,7 +69,7 @@ def push_holdings(holdings: list[dict]) -> None:
 
     with httpx.Client(timeout=30) as client:
         r = client.post(
-            f"{API_URL}/holdings/",
+            f"{API_URL}/holdings",
             json=holdings,
             headers={"X-API-Key": API_KEY},
         )
