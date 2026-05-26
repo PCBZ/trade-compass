@@ -34,10 +34,9 @@ def fetch_positions() -> list[dict]:
         host=OPEND_HOST,
         port=OPEND_PORT,
         filter_trdmarket=TrdMarket.US,
-        trd_env=TrdEnv.REAL,
     )
     try:
-        ret, data = ctx.position_list_query()
+        ret, data = ctx.position_list_query(trd_env=TrdEnv.REAL)
         if ret != RET_OK:
             raise RuntimeError(f"position_list_query failed: {data}")
 
