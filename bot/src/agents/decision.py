@@ -72,15 +72,17 @@ async def decision_agent(state: AnalysisState) -> dict:
         )
         result: DecisionOutput = await llm.ainvoke(prompt)
 
-        # Persist to REST API (non-blocking — don't fail analysis if this errors)
-        try:
-            await post_decision(
-                symbol=ticker,
-                verdict=result.verdict,
-                reasoning=result.thesis,
-            )
-        except Exception:  # noqa: BLE001
-            pass
+        # Persist to REST API — only for actionable verdicts (BUY/HOLD/SELL).
+        # INSUFFICIENT_DATA is not accepted by the API model and has nothing to store.
+        if result.verdict != "INSUFFICIENT_DATA":
+            try:
+                await post_decision(
+                    symbol=ticker,
+                    verdict=result.verdict,
+                    reasoning=result.thesis,
+                )
+            except Exception:  # noqa: BLE001
+                pass
 
         return {"decision": result.model_dump()}
 
