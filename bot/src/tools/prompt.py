@@ -52,10 +52,9 @@ Piotroski F-Score: {piotroski}/9  (≥7 strong, ≤2 weak)
 Altman Z-Score:    {altman_z}     (>2.99 safe, <1.81 distress)
 
 ## Valuation
-Trailing PE:  {valuation.get('trailing_pe', 'N/A')}
-Forward PE:   {valuation.get('forward_pe', 'N/A')}
-EV/EBITDA:    {valuation.get('ev_to_ebitda', 'N/A')}
-Price/Book:   {valuation.get('price_to_book', 'N/A')}
+PE Ratio:   {valuation.get('pe_ratio', 'N/A')}
+EV/EBITDA:  {valuation.get('ev_to_ebitda', 'N/A')}
+EV/Sales:   {valuation.get('ev_to_sales', 'N/A')}
 
 ## Growth (YoY)
 Revenue growth: {growth.get('revenue_growth_pct', 'N/A')}%
@@ -63,9 +62,11 @@ EPS growth:     {growth.get('eps_growth_pct', 'N/A')}%
 Latest EPS:     {growth.get('latest_eps', 'N/A')}
 
 ## Quality
-ROE:            {quality.get('return_on_equity', 'N/A')}
-FCF/share:      {quality.get('free_cashflow_per_share', 'N/A')}
-Debt/Equity:    {quality.get('debt_to_equity', 'N/A')}
+ROE:              {quality.get('return_on_equity', 'N/A')}
+ROIC:             {quality.get('return_on_invested_capital', 'N/A')}
+FCF Yield:        {quality.get('free_cashflow_yield', 'N/A')}
+Net Debt/EBITDA:  {quality.get('net_debt_to_ebitda', 'N/A')}
+Current Ratio:    {quality.get('current_ratio', 'N/A')}
 
 ## Market Sentiment
 Current price:     ${timing.get('current_price', 'N/A')}
