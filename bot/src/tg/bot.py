@@ -57,6 +57,8 @@ application = build_application()
 @asynccontextmanager
 async def lifespan(_: object) -> AsyncGenerator[None, None]:
     """Initialize Telegram Application on startup; shut it down on stop."""
+    if not os.environ.get("TELEGRAM_BOT_TOKEN"):
+        raise RuntimeError("TELEGRAM_BOT_TOKEN is not set — cannot start bot")
     await application.initialize()
     yield
     await application.shutdown()
