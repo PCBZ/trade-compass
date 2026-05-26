@@ -44,10 +44,10 @@ jobs:
         run: pip install -r api/requirements-dev.txt
 
       - name: Lint
-        run: ruff check api/src/
+        run: ruff check api/src/ bot/src/ sync/src/
 
       - name: Format check
-        run: ruff format --check api/src/
+        run: ruff format --check api/src/ bot/src/ sync/src/
 
       - name: Test
         run: cd api && pytest tests/ -v

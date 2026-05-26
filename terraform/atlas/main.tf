@@ -21,6 +21,7 @@ data "terraform_remote_state" "compute_engine" {
   }
 }
 
+
 # ── Project ───────────────────────────────────────────────────
 resource "mongodbatlas_project" "trade_compass" {
   name   = var.project_name
@@ -56,4 +57,12 @@ resource "mongodbatlas_project_ip_access_list" "compute_engine" {
   project_id = mongodbatlas_project.trade_compass.id
   ip_address = data.terraform_remote_state.compute_engine.outputs.external_ip
   comment    = "Compute Engine static IP"
+}
+
+# M0 free tier does not support VPC peering or private endpoints.
+# Real security is the credentials stored in Secret Manager.
+resource "mongodbatlas_project_ip_access_list" "cloud_run" {
+  project_id = mongodbatlas_project.trade_compass.id
+  cidr_block = "0.0.0.0/0"
+  comment    = "Cloud Run egress — M0 does not support VPC peering; auth via Secret Manager"
 }

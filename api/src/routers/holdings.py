@@ -19,7 +19,7 @@ _example = {
 
 
 @router.get(
-    "/",
+    "",
     responses={200: {"content": {"application/json": {"example": [_example]}}}},
 )
 async def list_holdings():
@@ -29,7 +29,7 @@ async def list_holdings():
 
 
 @router.post(
-    "/",
+    "",
     status_code=201,
     responses={201: {"content": {"application/json": {"example": {"upserted": 2}}}}},
 )

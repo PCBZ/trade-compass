@@ -14,6 +14,16 @@ _example = {
 
 
 @router.get(
+    "",
+    responses={200: {"content": {"application/json": {"example": [_example]}}}},
+)
+async def list_decisions():
+    """Return all decisions, newest first."""
+    db = get_db()
+    return await db.decisions.find({}, {"_id": 0}).sort("created_at", -1).to_list(None)
+
+
+@router.get(
     "/{symbol}",
     responses={200: {"content": {"application/json": {"example": _example}}}},
 )
@@ -29,7 +39,7 @@ async def get_decision(symbol: str):
 
 
 @router.post(
-    "/",
+    "",
     status_code=201,
     responses={201: {"content": {"application/json": {"example": {"saved": "NVDA"}}}}},
 )

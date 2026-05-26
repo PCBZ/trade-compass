@@ -65,6 +65,7 @@ class Preferences(BaseModel):
                 "risk_tolerance": "medium",
                 "sectors": ["tech", "energy"],
                 "max_position_size": 0.1,
+                "llm_model": "meta-llama/llama-3.3-70b-instruct:free",
             }
         }
     )
@@ -77,4 +78,8 @@ class Preferences(BaseModel):
     )
     max_position_size: float = Field(
         default=0.1, description="Max single position as fraction of portfolio (0–1)"
+    )
+    llm_model: str = Field(
+        default="",
+        description="LLM model for analysis. Configured in bot/config.json.",
     )
