@@ -57,15 +57,21 @@ API_KEY=${API_KEY_VAL}
 EOF
 chmod 600 /opt/trade-compass/sync/.env
 
+# ── Locate OpenD binary (version-agnostic) ────────────────────
+OPEND_BIN=$(find /opt/futu-opend -name "OpenD" -type f | head -1)
+OPEND_DIR=$(dirname "${OPEND_BIN}")
+OPEND_XML="${OPEND_DIR}/OpenD.xml"
+chmod +x "${OPEND_BIN}"
+
 # ── systemd service for OpenD ─────────────────────────────────
-cat > /etc/systemd/system/futu-opend.service <<'EOF'
+cat > /etc/systemd/system/futu-opend.service <<EOF
 [Unit]
 Description=Futu OpenD
 After=network.target
 
 [Service]
-ExecStart=/opt/futu-opend/FutuOpenD -cfg /opt/futu-opend/FutuOpenD_config.xml
-WorkingDirectory=/opt/futu-opend
+ExecStart=${OPEND_BIN} -cfg ${OPEND_XML}
+WorkingDirectory=${OPEND_DIR}
 Restart=on-failure
 RestartSec=10
 
@@ -77,6 +83,6 @@ systemctl daemon-reload
 systemctl enable futu-opend
 
 echo "=== Bootstrap complete ==="
-echo "Next step: edit /opt/futu-opend/FutuOpenD_config.xml with Moomoo credentials, then:"
+echo "Next step: edit ${OPEND_XML} with Moomoo credentials, then:"
 echo "  systemctl start futu-opend"
 echo "  bash /opt/trade-compass/sync/setup_cron.sh"

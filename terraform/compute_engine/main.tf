@@ -33,12 +33,20 @@ resource "google_secret_manager_secret_iam_member" "vm_api_key_access" {
 
 # ── Resolved bucket name (used consistently across resources) ─
 locals {
-  sync_files  = ["main.py", "setup_cron.sh", "requirements.txt"]
   bucket_name = coalesce(var.tfstate_bucket, "trade-compass-tfstate-${var.gcp_project_id}")
+  # Files that live at sync/ root
+  sync_root_files = ["setup_cron.sh", "requirements.txt"]
+}
+
+# main.py lives under sync/src/ after src-layout restructure
+resource "google_storage_bucket_object" "sync_main" {
+  name   = "sync/main.py"
+  bucket = local.bucket_name
+  source = "${path.module}/../../sync/src/main.py"
 }
 
 resource "google_storage_bucket_object" "sync" {
-  for_each = toset(local.sync_files)
+  for_each = toset(local.sync_root_files)
   name     = "sync/${each.value}"
   bucket   = local.bucket_name
   source   = "${path.module}/../../sync/${each.value}"
