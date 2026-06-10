@@ -1,5 +1,4 @@
 from fastapi import APIRouter
-from pymongo import UpdateOne
 
 from database import get_db
 from models import Holding
@@ -34,13 +33,10 @@ async def list_holdings():
     responses={201: {"content": {"application/json": {"example": {"upserted": 2}}}}},
 )
 async def upsert_holdings(holdings: list[Holding]):
-    """Upsert a batch of positions by symbol. Called by the Futu sync script."""
+    """Replace all positions with the provided batch. Called by the Futu sync script."""
+    db = get_db()
+    await db.holdings.delete_many({})
     if not holdings:
         return {"upserted": 0}
-    db = get_db()
-    ops = [
-        UpdateOne({"symbol": h.symbol}, {"$set": h.model_dump()}, upsert=True)
-        for h in holdings
-    ]
-    await db.holdings.bulk_write(ops)
+    await db.holdings.insert_many([h.model_dump() for h in holdings])
     return {"upserted": len(holdings)}
