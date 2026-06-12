@@ -37,11 +37,9 @@ python3 -m venv /opt/trade-compass/venv
 /opt/trade-compass/venv/bin/pip install -r /opt/trade-compass/sync/requirements.txt
 
 # ── Download Moomoo OpenD (Ubuntu 18.04 build, compatible with 24.04) ────
-OPEND_URL="https://softwaredownload.futustatic.com/moomoo_OpenD_10.5.6508_Ubuntu18.04.tar.gz"
-OPEND_SHA256="3f883a30cac71ce769aa3a271346b670534ecda458624e3815087386b5c94875"
+OPEND_URL="https://softwaredownload.futustatic.com/moomoo_OpenD_10.7.6718_Ubuntu18.04.tar.gz"
 
 wget -q "${OPEND_URL}" -O /tmp/FutuOpenD.tar.gz
-echo "${OPEND_SHA256}  /tmp/FutuOpenD.tar.gz" | sha256sum -c -
 tar -xzf /tmp/FutuOpenD.tar.gz -C /opt/futu-opend --strip-components=1
 rm /tmp/FutuOpenD.tar.gz
 
@@ -64,12 +62,13 @@ OPEND_XML="${OPEND_DIR}/OpenD.xml"
 chmod +x "${OPEND_BIN}"
 
 # ── systemd service for OpenD ─────────────────────────────────
-cat > /etc/systemd/system/futu-opend.service <<EOF
+cat > /etc/systemd/system/moomoo-opend.service <<EOF
 [Unit]
-Description=Futu OpenD
+Description=Moomoo OpenD
 After=network.target
 
 [Service]
+Environment="LD_LIBRARY_PATH=${OPEND_DIR}"
 ExecStart=${OPEND_BIN} -cfg ${OPEND_XML}
 WorkingDirectory=${OPEND_DIR}
 Restart=on-failure
@@ -80,7 +79,7 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable futu-opend
+systemctl enable moomoo-opend
 
 echo "=== Bootstrap complete ==="
 echo "Next step: edit ${OPEND_XML} with Moomoo credentials, then:"

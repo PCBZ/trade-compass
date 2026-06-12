@@ -18,15 +18,6 @@ OPEND_PORT = int(os.getenv("OPEND_PORT", "11111"))
 API_URL = os.environ["API_URL"].rstrip("/")
 API_KEY = os.environ["API_KEY"]
 
-_SECURITY_TYPE_MAP = {
-    "STOCK": "STOCK",
-    "ETF": "ETF",
-    "FUND": "FUND",
-    "BOND": "BOND",
-    "WARRANT": "WARRANT",
-    "FUTURE": "FUTURE",
-}
-
 
 def fetch_positions() -> list[dict]:
     """Fetch all positions from Moomoo OpenD."""
@@ -44,14 +35,12 @@ def fetch_positions() -> list[dict]:
         for _, row in data.iterrows():
             holdings.append(
                 {
-                    "symbol": row["code"].split(".")[-1],  # US.AAPL → AAPL
+                    "symbol": row["code"].split(".", 1)[-1],  # US.AAPL → AAPL, US.BRK.B → BRK.B
                     "name": row.get("stock_name", ""),
                     "qty": float(row["qty"]),
                     "avg_cost": float(row["cost_price"]),
                     "market_value": float(row["market_val"]),
-                    "security_type": _SECURITY_TYPE_MAP.get(
-                        str(row.get("security_type", "")).upper(), "NONE"
-                    ),
+                    "security_type": "STOCK",
                     "currency": "USD",
                 }
             )
