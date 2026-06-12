@@ -83,5 +83,5 @@ systemctl enable moomoo-opend
 
 echo "=== Bootstrap complete ==="
 echo "Next step: edit ${OPEND_XML} with Moomoo credentials, then:"
-echo "  systemctl start futu-opend"
+echo "  systemctl start moomoo-opend"
 echo "  bash /opt/trade-compass/sync/setup_cron.sh"

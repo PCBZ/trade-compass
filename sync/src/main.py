@@ -20,31 +20,54 @@ API_KEY = os.environ["API_KEY"]
 
 
 def fetch_positions() -> list[dict]:
-    """Fetch all positions from Moomoo OpenD."""
+    """Fetch all real positions from both accounts."""
     ctx = OpenSecTradeContext(
         host=OPEND_HOST,
         port=OPEND_PORT,
         filter_trdmarket=TrdMarket.US,
     )
     try:
-        ret, data = ctx.position_list_query(trd_env=TrdEnv.REAL)
+        ret, acc_list = ctx.get_acc_list()
         if ret != RET_OK:
-            raise RuntimeError(f"position_list_query failed: {data}")
+            raise RuntimeError(f"get_acc_list failed: {acc_list}")
 
-        holdings = []
-        for _, row in data.iterrows():
-            holdings.append(
-                {
-                    "symbol": row["code"].split(".", 1)[-1],  # US.AAPL → AAPL, US.BRK.B → BRK.B
-                    "name": row.get("stock_name", ""),
-                    "qty": float(row["qty"]),
-                    "avg_cost": float(row["cost_price"]),
-                    "market_value": float(row["market_val"]),
-                    "security_type": "STOCK",
-                    "currency": "USD",
-                }
-            )
-        return holdings
+        real_accounts = acc_list[acc_list["trd_env"] == "REAL"]
+
+        # Aggregate by symbol across accounts
+        aggregated: dict[str, dict] = {}
+        for _, acc in real_accounts.iterrows():
+            acc_id = int(acc["acc_id"])
+            ret, data = ctx.position_list_query(trd_env=TrdEnv.REAL, acc_id=acc_id)
+            if ret != RET_OK:
+                log.warning("position_list_query failed for acc %s: %s", acc_id, data)
+                continue
+            for _, row in data.iterrows():
+                symbol = row["code"].split(".", 1)[-1]
+                qty = float(row["qty"])
+                cost = float(row["cost_price"])
+                mval = float(row["market_val"])
+                if symbol not in aggregated:
+                    aggregated[symbol] = {
+                        "symbol": symbol,
+                        "name": row.get("stock_name", ""),
+                        "qty": qty,
+                        "avg_cost": cost,
+                        "market_value": mval,
+                        "security_type": "STOCK",
+                        "currency": "USD",
+                        "account": "",
+                    }
+                else:
+                    existing = aggregated[symbol]
+                    total_qty = existing["qty"] + qty
+                    # Weighted average cost
+                    existing["avg_cost"] = (
+                        (existing["avg_cost"] * existing["qty"] + cost * qty) / total_qty
+                        if total_qty > 0 else 0
+                    )
+                    existing["qty"] = total_qty
+                    existing["market_value"] += mval
+        return list(aggregated.values())
     finally:
         ctx.close()
 
