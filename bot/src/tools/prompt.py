@@ -40,14 +40,21 @@ def build_decision_prompt(
     piotroski = scores.get("piotroski")
     altman_z = scores.get("altman_z")
 
-    return f"""You are a senior equity analyst. Analyse the following data and provide a structured investment verdict.
+    is_etf = profile.get("sector", "").upper() in ("ETF", "") and profile.get(
+        "industry", ""
+    ).upper() in ("EXCHANGE TRADED FUND", "ETF", "")
 
-## Company
-Ticker: {ticker}
-Name: {profile.get('name') or ticker}
-Sector: {profile.get('sector', 'N/A')} | Industry: {profile.get('industry', 'N/A')}
+    etf_note = (
+        "\nNote: This is an ETF. Fundamental metrics (PE, ROE, Piotroski) do not apply. "
+        "Base your verdict on price action, 52-week range, analyst targets, and news.\n"
+        if is_etf
+        else ""
+    )
 
-## Financial Health (objective scores)
+    fundamental_section = (
+        ""
+        if is_etf
+        else f"""## Financial Health (objective scores)
 Piotroski F-Score: {piotroski}/9  (≥7 strong, ≤2 weak)
 Altman Z-Score:    {altman_z}     (>2.99 safe, <1.81 distress)
 
@@ -68,7 +75,17 @@ FCF Yield:        {quality.get('free_cashflow_yield', 'N/A')}
 Net Debt/EBITDA:  {quality.get('net_debt_to_ebitda', 'N/A')}
 Current Ratio:    {quality.get('current_ratio', 'N/A')}
 
-## Market Sentiment
+"""
+    )
+
+    return f"""You are a senior equity analyst. Analyse the following data and provide a structured investment verdict.
+{etf_note}
+## Company
+Ticker: {ticker}
+Name: {profile.get('name') or ticker}
+Sector: {profile.get('sector', 'N/A')} | Industry: {profile.get('industry', 'N/A')}
+
+{fundamental_section}## Market Sentiment
 Current price:     ${timing.get('current_price', 'N/A')}
 52w range:         ${timing.get('fifty_two_week_low', 'N/A')} – ${timing.get('fifty_two_week_high', 'N/A')}
 Position in range: {timing.get('position_in_52w_range', 'N/A')} (0=low, 1=high)
@@ -85,7 +102,9 @@ Sectors of interest: {', '.join(preferences.get('sectors', [])) or 'any'}
 Max position size: {preferences.get('max_position_size', 0.1) * 100:.0f}% of portfolio
 
 ## Instructions
-Based on all the above, provide your investment verdict.
+Based on all available data, provide your investment verdict (BUY, HOLD, or SELL).
+Use INSUFFICIENT_DATA ONLY if current price is unavailable and no news exists — not merely because fundamental metrics are missing.
+For ETFs or when fundamentals are absent, rely on price action, 52-week range, analyst consensus, and recent news.
 Consider sector-appropriate valuation benchmarks (e.g. high-growth tech warrants higher multiples).
 Be concise but specific. Cite 2–3 key reasons for your verdict.
 """

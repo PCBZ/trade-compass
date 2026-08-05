@@ -31,6 +31,7 @@ class Holding(BaseModel):
         default="NONE", description="Futu security type"
     )
     currency: str = Field(default="USD", description="Currency code")
+    account: str = Field(default="", description="Account label, e.g. CASH or TFSA")
     updated_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         description="Last sync timestamp (UTC)",
