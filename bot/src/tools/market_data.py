@@ -117,7 +117,9 @@ async def fetch_financials(
 
     Source: GET /stable/income-statement?symbol=&limit=
     """
-    data = await _get(client, "/income-statement", symbol=_normalize_ticker(ticker), limit=limit)
+    data = await _get(
+        client, "/income-statement", symbol=_normalize_ticker(ticker), limit=limit
+    )
     if not data:
         return {}
 

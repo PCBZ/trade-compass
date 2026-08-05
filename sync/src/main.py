@@ -61,8 +61,10 @@ def fetch_positions() -> list[dict]:
                     total_qty = existing["qty"] + qty
                     # Weighted average cost
                     existing["avg_cost"] = (
-                        (existing["avg_cost"] * existing["qty"] + cost * qty) / total_qty
-                        if total_qty > 0 else 0
+                        (existing["avg_cost"] * existing["qty"] + cost * qty)
+                        / total_qty
+                        if total_qty > 0
+                        else 0
                     )
                     existing["qty"] = total_qty
                     existing["market_value"] += mval
