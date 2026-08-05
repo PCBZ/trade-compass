@@ -22,10 +22,16 @@ def _key() -> dict[str, str]:
     return {"apikey": _API_KEY}
 
 
+def _normalize_ticker(ticker: str) -> str:
+    """Convert Futu-style tickers to FMP format (BRK.B → BRK-B)."""
+    # FMP uses dash for class shares; Futu uses dot (e.g. US.BRK.B → BRK.B stored)
+    return ticker.replace(".", "-")
+
+
 async def _get(client: httpx.AsyncClient, path: str, **params: Any) -> Any:
-    """GET a /stable/ endpoint. Returns [] gracefully on 401/403/404 (free tier limits)."""
+    """GET a /stable/ endpoint. Returns [] gracefully on 4xx (free tier limits)."""
     resp = await client.get(f"{_BASE}{path}", params={**_key(), **params}, timeout=10)
-    if resp.status_code in (401, 403, 404):
+    if resp.status_code in (401, 403, 404, 429):
         return []
     resp.raise_for_status()
     data = resp.json()
@@ -43,7 +49,7 @@ async def fetch_quote(client: httpx.AsyncClient, ticker: str) -> dict[str, Any]:
 
     Source: GET /stable/quote?symbol=
     """
-    data = await _get(client, "/quote", symbol=ticker)
+    data = await _get(client, "/quote", symbol=_normalize_ticker(ticker))
     if not data:
         return {}
     q = data[0]
@@ -64,7 +70,7 @@ async def fetch_profile(client: httpx.AsyncClient, ticker: str) -> dict[str, Any
 
     Source: GET /stable/profile?symbol=
     """
-    data = await _get(client, "/profile", symbol=ticker)
+    data = await _get(client, "/profile", symbol=_normalize_ticker(ticker))
     if not data:
         return {}
     p = data[0]
@@ -84,7 +90,7 @@ async def fetch_key_metrics(client: httpx.AsyncClient, ticker: str) -> dict[str,
 
     Source: GET /stable/key-metrics?symbol=&limit=1
     """
-    data = await _get(client, "/key-metrics", symbol=ticker, limit=1)
+    data = await _get(client, "/key-metrics", symbol=_normalize_ticker(ticker), limit=1)
     if not data:
         return {}
     m = data[0]
@@ -111,7 +117,7 @@ async def fetch_financials(
 
     Source: GET /stable/income-statement?symbol=&limit=
     """
-    data = await _get(client, "/income-statement", symbol=ticker, limit=limit)
+    data = await _get(client, "/income-statement", symbol=_normalize_ticker(ticker), limit=limit)
     if not data:
         return {}
 
@@ -143,7 +149,7 @@ async def fetch_scores(client: httpx.AsyncClient, ticker: str) -> dict[str, Any]
 
     Source: GET /stable/financial-scores?symbol=
     """
-    data = await _get(client, "/financial-scores", symbol=ticker)
+    data = await _get(client, "/financial-scores", symbol=_normalize_ticker(ticker))
     if not data:
         return {}
     s = data[0]
@@ -160,7 +166,7 @@ async def fetch_news(
 
     Source: GET /stable/news?tickers=&limit=
     """
-    data = await _get(client, "/news", tickers=ticker, limit=limit)
+    data = await _get(client, "/news", tickers=_normalize_ticker(ticker), limit=limit)
     return [
         {
             "title": item.get("title", ""),
@@ -185,9 +191,10 @@ async def fetch_analyst_ratings(
     """
     import asyncio
 
+    fmp_ticker = _normalize_ticker(ticker)
     targets_data, recs_data = await asyncio.gather(
-        _get(client, "/price-target-consensus", symbol=ticker),
-        _get(client, "/analyst-recommendation", symbol=ticker, limit=2),
+        _get(client, "/price-target-consensus", symbol=fmp_ticker),
+        _get(client, "/analyst-recommendation", symbol=fmp_ticker, limit=2),
     )
 
     targets = targets_data[0] if targets_data else {}

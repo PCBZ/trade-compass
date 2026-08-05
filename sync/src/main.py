@@ -6,7 +6,7 @@ from pathlib import Path
 
 import httpx
 from dotenv import load_dotenv
-from futu import OpenSecTradeContext, RET_OK, TrdEnv, TrdMarket
+from futu import OpenSecTradeContext, RET_OK, TrdEnv
 
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
@@ -24,7 +24,6 @@ def fetch_positions() -> list[dict]:
     ctx = OpenSecTradeContext(
         host=OPEND_HOST,
         port=OPEND_PORT,
-        filter_trdmarket=TrdMarket.US,
     )
     try:
         ret, acc_list = ctx.get_acc_list()
