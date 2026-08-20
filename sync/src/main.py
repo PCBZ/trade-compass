@@ -6,7 +6,14 @@ from pathlib import Path
 
 import httpx
 from dotenv import load_dotenv
-from futu import OpenSecTradeContext, RET_OK, TrdEnv, TrdMarket
+from futu import (
+    Market,
+    OpenQuoteContext,
+    OpenSecTradeContext,
+    RET_OK,
+    TrdEnv,
+    TrdMarket,
+)
 
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
@@ -17,6 +24,10 @@ OPEND_HOST = os.getenv("OPEND_HOST", "127.0.0.1")
 OPEND_PORT = int(os.getenv("OPEND_PORT", "11111"))
 API_URL = os.environ["API_URL"].rstrip("/")
 API_KEY = os.environ["API_KEY"]
+
+# OpenD security types the REST API accepts verbatim; everything else it knows
+# about (IDX, DRVT, PLATE, ...) is not an equity position and maps to NONE.
+_API_SECURITY_TYPES = frozenset({"STOCK", "ETF", "BOND", "WARRANT", "FUTURE"})
 
 
 def _num(value) -> float:
@@ -83,6 +94,51 @@ def fetch_positions() -> list[dict]:
         ctx.close()
 
 
+def fetch_security_types(codes: list[str]) -> dict[str, str]:
+    """Map each OpenD code to its security type (STOCK, ETF, BOND, ...).
+
+    Returns an empty map when the lookup fails, so callers keep their default.
+    """
+    ctx = OpenQuoteContext(host=OPEND_HOST, port=OPEND_PORT)
+    try:
+        ret, data = ctx.get_stock_basicinfo(Market.US, code_list=codes)
+        if ret != RET_OK:
+            log.warning("get_stock_basicinfo failed: %s", data)
+            return {}
+        types = {}
+        for _, row in data.iterrows():
+            raw = str(row["stock_type"]).upper()
+            types[row["code"]] = raw if raw in _API_SECURITY_TYPES else "NONE"
+        return types
+    finally:
+        ctx.close()
+
+
+def annotate_security_types(holdings: list[dict]) -> None:
+    """Replace the placeholder security_type with OpenD's real classification."""
+    if not holdings:
+        return
+
+    # Codes carry the US prefix because fetch_positions filters on TrdMarket.US.
+    codes = [f"US.{h['symbol']}" for h in holdings]
+    types = fetch_security_types(codes)
+    if not types:
+        log.warning("Security type lookup returned nothing; leaving all as STOCK")
+        return
+
+    for holding, code in zip(holdings, codes):
+        resolved = types.get(code)
+        if resolved is None:
+            log.warning("No security type for %s; leaving as STOCK", code)
+            continue
+        holding["security_type"] = resolved
+
+    log.info(
+        "Security types: %s",
+        ", ".join(f"{h['symbol']}={h['security_type']}" for h in holdings),
+    )
+
+
 def push_holdings(holdings: list[dict]) -> None:
     """POST holdings batch to trade-compass REST API."""
     if not holdings:
@@ -103,6 +159,7 @@ def main() -> None:
     log.info("Starting sync...")
     holdings = fetch_positions()
     log.info("Fetched %d positions from OpenD", len(holdings))
+    annotate_security_types(holdings)
     push_holdings(holdings)
     log.info("Sync complete")
 
