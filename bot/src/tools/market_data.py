@@ -16,6 +16,7 @@ import httpx
 
 _BASE = "https://financialmodelingprep.com/stable"
 _API_KEY = os.environ.get("FMP_API_KEY", "")
+_NO_DATA_STATUSES = frozenset({401, 402, 403, 404, 429})
 
 
 def _key() -> dict[str, str]:
@@ -31,11 +32,15 @@ def _normalize_ticker(ticker: str) -> str:
 async def _get(client: httpx.AsyncClient, path: str, **params: Any) -> Any:
     """GET a /stable/ endpoint. Returns [] gracefully on 4xx (free tier limits)."""
     resp = await client.get(f"{_BASE}{path}", params={**_key(), **params}, timeout=10)
-    if resp.status_code in (401, 403, 404, 429):
+    if resp.status_code in _NO_DATA_STATUSES:
         return []
     resp.raise_for_status()
-    data = resp.json()
-    # Some restricted endpoints return a plain string error message
+    try:
+        data = resp.json()
+    except ValueError:
+        # Restricted endpoints answer with a plain-text error page, not JSON
+        return []
+    # Others return a JSON string carrying the error message
     if isinstance(data, str):
         return []
     return data

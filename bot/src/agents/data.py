@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
 import httpx
 
@@ -18,6 +19,21 @@ from ..tools.market_data import (
 )
 from ..tools.portfolio_api import get_holdings, get_preferences
 
+log = logging.getLogger(__name__)
+
+# Gather order, with the empty value to fall back to when a source fails.
+_SOURCES = (
+    ("quote", dict),
+    ("profile", dict),
+    ("key_metrics", dict),
+    ("financials", dict),
+    ("scores", dict),
+    ("news", list),
+    ("analyst", dict),
+    ("holdings", list),
+    ("preferences", dict),
+)
+
 
 async def data_agent(state: AnalysisState) -> dict:
     """
@@ -31,18 +47,10 @@ async def data_agent(state: AnalysisState) -> dict:
 
     try:
         async with httpx.AsyncClient() as client:
-            # All 6 FMP endpoints + 2 REST API calls in parallel
-            (
-                quote,
-                profile,
-                key_metrics,
-                financials,
-                scores,
-                news,
-                analyst,
-                holdings,
-                preferences,
-            ) = await asyncio.gather(
+            # 8 FMP requests + 2 REST API calls in parallel. Sources fail
+            # independently — a restricted symbol must not sink the whole ticker,
+            # so each failure degrades to an empty value and is logged.
+            results = await asyncio.gather(
                 fetch_quote(client, ticker),
                 fetch_profile(client, ticker),
                 fetch_key_metrics(client, ticker),
@@ -52,7 +60,27 @@ async def data_agent(state: AnalysisState) -> dict:
                 fetch_analyst_ratings(client, ticker),
                 get_holdings(),
                 get_preferences(),
+                return_exceptions=True,
             )
+
+        values = []
+        for (label, empty), result in zip(_SOURCES, results):
+            if isinstance(result, Exception):
+                log.warning("%s: %s source failed: %r", ticker, label, result)
+                values.append(empty())
+            else:
+                values.append(result)
+        (
+            quote,
+            profile,
+            key_metrics,
+            financials,
+            scores,
+            news,
+            analyst,
+            holdings,
+            preferences,
+        ) = values
 
         return {
             "raw_data": {
