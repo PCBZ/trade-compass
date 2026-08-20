@@ -40,14 +40,24 @@ def build_decision_prompt(
     piotroski = scores.get("piotroski")
     altman_z = scores.get("altman_z")
 
-    is_etf = profile.get("sector", "").upper() in ("ETF", "") and profile.get(
-        "industry", ""
-    ).upper() in ("EXCHANGE TRADED FUND", "ETF", "")
+    # FMP states this outright, so trust the flag rather than inferring it from
+    # sector/industry text. An empty profile means the request failed — treating
+    # that as "ETF" would silently strip fundamentals from an ordinary stock.
+    is_etf = bool(profile.get("is_etf") or profile.get("is_fund"))
 
     etf_note = (
-        "\nNote: This is an ETF. Fundamental metrics (PE, ROE, Piotroski) do not apply. "
-        "Base your verdict on price action, 52-week range, analyst targets, and news.\n"
+        "\nNote: This is an ETF or fund. Fundamental metrics (PE, ROE, Piotroski) "
+        "do not apply. Base your verdict on price action, 52-week range, analyst "
+        "targets, and news.\n"
         if is_etf
+        else ""
+    )
+
+    profile_note = (
+        "\nNote: Company profile data was unavailable for this request, so sector "
+        "and security type are unknown. Any fundamental metrics below that read as "
+        "missing may reflect a failed request rather than a weak business.\n"
+        if not profile
         else ""
     )
 
@@ -79,7 +89,7 @@ Current Ratio:    {quality.get('current_ratio', 'N/A')}
     )
 
     return f"""You are a senior equity analyst. Analyse the following data and provide a structured investment verdict.
-{etf_note}
+{etf_note}{profile_note}
 ## Company
 Ticker: {ticker}
 Name: {profile.get('name') or ticker}

@@ -82,6 +82,8 @@ async def fetch_profile(client: httpx.AsyncClient, ticker: str) -> dict[str, Any
         "description": p.get("description", ""),
         "country": p.get("country", ""),
         "currency": p.get("currency", "USD"),
+        "is_etf": bool(p.get("isEtf")),
+        "is_fund": bool(p.get("isFund")),
     }
 
 
