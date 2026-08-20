@@ -6,7 +6,7 @@ from pathlib import Path
 
 import httpx
 from dotenv import load_dotenv
-from futu import OpenSecTradeContext, RET_OK, TrdEnv
+from futu import OpenSecTradeContext, RET_OK, TrdEnv, TrdMarket
 
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
@@ -19,9 +19,18 @@ API_URL = os.environ["API_URL"].rstrip("/")
 API_KEY = os.environ["API_KEY"]
 
 
+def _num(value) -> float:
+    """Coerce an OpenD field to float; it uses 'N/A' for values it cannot fill."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def fetch_positions() -> list[dict]:
     """Fetch all real positions from both accounts."""
     ctx = OpenSecTradeContext(
+        filter_trdmarket=TrdMarket.US,
         host=OPEND_HOST,
         port=OPEND_PORT,
     )
@@ -42,9 +51,10 @@ def fetch_positions() -> list[dict]:
                 continue
             for _, row in data.iterrows():
                 symbol = row["code"].split(".", 1)[-1]
-                qty = float(row["qty"])
-                cost = float(row["cost_price"])
-                mval = float(row["market_val"])
+                qty = _num(row["qty"])
+                # cost_price comes back 0 on cash accounts; average_cost is filled
+                cost = _num(row.get("average_cost")) or _num(row.get("cost_price"))
+                mval = _num(row["market_val"])
                 if symbol not in aggregated:
                     aggregated[symbol] = {
                         "symbol": symbol,
