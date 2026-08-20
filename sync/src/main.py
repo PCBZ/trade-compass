@@ -1,6 +1,7 @@
 """Sync Moomoo positions to trade-compass REST API."""
 
 import logging
+import math
 import os
 from pathlib import Path
 
@@ -36,6 +37,24 @@ def _num(value) -> float:
         return float(value)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _opt(value) -> float | None:
+    """Like _num, but keeps "absent" distinct from zero.
+
+    OpenD leaves a field NaN when it does not apply — an ETF has no PE — and NaN
+    is not valid JSON, so it must not reach the API.
+    """
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return None
+    return None if math.isnan(num) else num
+
+
+def _codes(holdings: list[dict]) -> list[str]:
+    """OpenD codes for the held symbols, US-prefixed to match TrdMarket.US."""
+    return [f"US.{h['symbol']}" for h in holdings]
 
 
 def fetch_positions() -> list[dict]:
@@ -119,8 +138,7 @@ def annotate_security_types(holdings: list[dict]) -> None:
     if not holdings:
         return
 
-    # Codes carry the US prefix because fetch_positions filters on TrdMarket.US.
-    codes = [f"US.{h['symbol']}" for h in holdings]
+    codes = _codes(holdings)
     types = fetch_security_types(codes)
     if not types:
         log.warning("Security type lookup returned nothing; leaving all as STOCK")
@@ -137,6 +155,67 @@ def annotate_security_types(holdings: list[dict]) -> None:
         "Security types: %s",
         ", ".join(f"{h['symbol']}={h['security_type']}" for h in holdings),
     )
+
+
+def fetch_quotes(codes: list[str]) -> list[dict]:
+    """Snapshot price and valuation for each code via OpenD.
+
+    FMP's free tier answers 402 for most of these symbols, so OpenD is the only
+    source that covers the whole portfolio. One request handles up to 60 codes.
+    """
+    if not codes:
+        return []
+
+    ctx = OpenQuoteContext(host=OPEND_HOST, port=OPEND_PORT)
+    try:
+        ret, data = ctx.get_market_snapshot(codes)
+        if ret != RET_OK:
+            log.warning("get_market_snapshot failed: %s", data)
+            return []
+
+        quotes = []
+        for _, row in data.iterrows():
+            last = _opt(row.get("last_price"))
+            prev_close = _opt(row.get("prev_close_price"))
+            change_pct = None
+            if last is not None and prev_close:
+                change_pct = round((last - prev_close) / prev_close * 100, 3)
+            quotes.append(
+                {
+                    "symbol": row["code"].split(".", 1)[-1],
+                    "name": row.get("name", ""),
+                    "current_price": last,
+                    "fifty_two_week_high": _opt(row.get("highest52weeks_price")),
+                    "fifty_two_week_low": _opt(row.get("lowest52weeks_price")),
+                    "market_cap": _opt(row.get("total_market_val")),
+                    "volume": _opt(row.get("volume")),
+                    "change_pct": change_pct,
+                    "pe_ratio": _opt(row.get("pe_ratio")),
+                    "pe_ttm_ratio": _opt(row.get("pe_ttm_ratio")),
+                    "pb_ratio": _opt(row.get("pb_ratio")),
+                    "eps": _opt(row.get("earning_per_share")),
+                    "net_asset_per_share": _opt(row.get("net_asset_per_share")),
+                }
+            )
+        return quotes
+    finally:
+        ctx.close()
+
+
+def push_quotes(quotes: list[dict]) -> None:
+    """POST the market snapshot to trade-compass REST API."""
+    if not quotes:
+        log.info("No quotes to sync")
+        return
+
+    with httpx.Client(timeout=30) as client:
+        r = client.post(
+            f"{API_URL}/quotes",
+            json=quotes,
+            headers={"X-API-Key": API_KEY},
+        )
+        r.raise_for_status()
+        log.info("Synced %d quotes: %s", len(quotes), r.json())
 
 
 def push_holdings(holdings: list[dict]) -> None:
@@ -161,6 +240,7 @@ def main() -> None:
     log.info("Fetched %d positions from OpenD", len(holdings))
     annotate_security_types(holdings)
     push_holdings(holdings)
+    push_quotes(fetch_quotes(_codes(holdings)))
     log.info("Sync complete")
 
 

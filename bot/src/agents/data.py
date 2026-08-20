@@ -17,7 +17,7 @@ from ..tools.market_data import (
     fetch_quote,
     fetch_scores,
 )
-from ..tools.portfolio_api import get_holdings, get_preferences
+from ..tools.portfolio_api import get_holdings, get_preferences, get_quote
 
 log = logging.getLogger(__name__)
 
@@ -32,6 +32,7 @@ _SOURCES = (
     ("analyst", dict),
     ("holdings", list),
     ("preferences", dict),
+    ("opend_quote", dict),
 )
 
 
@@ -39,7 +40,7 @@ async def data_agent(state: AnalysisState) -> dict:
     """
     Fetches all raw data needed by downstream agents in parallel:
       - FMP: quote, profile, key_metrics, financials, news, analyst_ratings
-      - REST API: current holdings, user preferences
+      - REST API: current holdings, user preferences, OpenD quote snapshot
 
     Writes: raw_data, holdings, preferences
     """
@@ -60,6 +61,7 @@ async def data_agent(state: AnalysisState) -> dict:
                 fetch_analyst_ratings(client, ticker),
                 get_holdings(),
                 get_preferences(),
+                get_quote(ticker),
                 return_exceptions=True,
             )
 
@@ -80,7 +82,13 @@ async def data_agent(state: AnalysisState) -> dict:
             analyst,
             holdings,
             preferences,
+            opend_quote,
         ) = values
+
+        # FMP's free tier answers 402 for most symbols; the OpenD snapshot covers
+        # every holding, at up to 5 minutes of staleness. Prefer FMP when it has
+        # something (it is real-time) and fall back to OpenD otherwise.
+        quote = quote or opend_quote
 
         return {
             "raw_data": {

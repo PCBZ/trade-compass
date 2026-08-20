@@ -38,6 +38,59 @@ class Holding(BaseModel):
     )
 
 
+
+class Quote(BaseModel):
+    """Live market snapshot pushed by the sync script from Moomoo OpenD.
+
+    Exists because FMP's free tier answers 402 for most symbols; OpenD covers
+    every holding. Optional fields are None when OpenD leaves them unset —
+    ETFs have no PE/PB, for instance.
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "symbol": "MU",
+                "name": "Micron Technology",
+                "current_price": 961.58,
+                "fifty_two_week_high": 1254.81,
+                "fifty_two_week_low": 114.07,
+                "market_cap": 1085121000000.0,
+                "volume": 18923710.0,
+                "change_pct": -0.42,
+                "pe_ratio": 126.59,
+                "pe_ttm_ratio": 21.72,
+                "pb_ratio": 10.78,
+                "eps": 7.59,
+                "net_asset_per_share": 89.18,
+                "updated_at": "2026-08-20T15:04:49Z",
+            }
+        }
+    )
+
+    symbol: str = Field(description="Ticker symbol, e.g. MU")
+    name: str = Field(default="", description="Security name")
+    current_price: float | None = Field(default=None, description="Last traded price")
+    fifty_two_week_high: float | None = Field(default=None, description="52-week high")
+    fifty_two_week_low: float | None = Field(default=None, description="52-week low")
+    market_cap: float | None = Field(default=None, description="Total market value")
+    volume: float | None = Field(default=None, description="Session volume")
+    change_pct: float | None = Field(
+        default=None, description="Change vs prev close, %"
+    )
+    pe_ratio: float | None = Field(default=None, description="PE ratio")
+    pe_ttm_ratio: float | None = Field(default=None, description="Trailing PE ratio")
+    pb_ratio: float | None = Field(default=None, description="Price to book")
+    eps: float | None = Field(default=None, description="Earnings per share")
+    net_asset_per_share: float | None = Field(
+        default=None, description="Book value per share"
+    )
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Last sync timestamp (UTC)",
+    )
+
+
 class Decision(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={

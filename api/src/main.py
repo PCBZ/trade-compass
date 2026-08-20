@@ -7,6 +7,7 @@ from database import connect, disconnect
 from routers.decisions import router as decisions_router
 from routers.holdings import router as holdings_router
 from routers.preferences import router as preferences_router
+from routers.quotes import router as quotes_router
 
 _REQUIRED_ENV = ["API_KEY", "MONGODB_URI"]
 
@@ -29,6 +30,7 @@ async def shutdown():
 app.include_router(holdings_router, dependencies=[Depends(require_api_key)])
 app.include_router(decisions_router, dependencies=[Depends(require_api_key)])
 app.include_router(preferences_router, dependencies=[Depends(require_api_key)])
+app.include_router(quotes_router, dependencies=[Depends(require_api_key)])
 
 
 @app.get("/health")

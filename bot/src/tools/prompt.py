@@ -70,6 +70,8 @@ Altman Z-Score:    {altman_z}     (>2.99 safe, <1.81 distress)
 
 ## Valuation
 PE Ratio:   {valuation.get('pe_ratio', 'N/A')}
+PE (TTM):   {valuation.get('pe_ttm_ratio', 'N/A')}
+P/B Ratio:  {valuation.get('pb_ratio', 'N/A')}
 EV/EBITDA:  {valuation.get('ev_to_ebitda', 'N/A')}
 EV/Sales:   {valuation.get('ev_to_sales', 'N/A')}
 

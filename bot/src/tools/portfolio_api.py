@@ -26,6 +26,19 @@ async def get_holdings() -> list[dict[str, Any]]:
         return resp.json()
 
 
+async def get_quote(symbol: str) -> dict[str, Any]:
+    """GET /quotes/{symbol} — OpenD market snapshot pushed by the sync script.
+
+    Returns {} when the symbol is not a current holding.
+    """
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{_API_URL}/quotes/{symbol}", headers=_headers(), timeout=10
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
 async def get_preferences() -> dict[str, Any]:
     """GET /preferences — returns user risk/style/sector settings."""
     async with httpx.AsyncClient() as client:

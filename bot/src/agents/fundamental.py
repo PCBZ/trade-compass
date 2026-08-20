@@ -41,8 +41,12 @@ async def fundamental_agent(state: AnalysisState) -> dict:
                 "altman_z": scores.get("altman_z_score"),  # >2.99 = safe
             },
             # Valuation
+            # PE/PB fall back to the OpenD snapshot, which covers the symbols
+            # FMP's free tier refuses. EV multiples have no OpenD equivalent.
             "valuation": {
-                "pe_ratio": key_metrics.get("pe_ratio"),
+                "pe_ratio": key_metrics.get("pe_ratio") or quote.get("pe_ratio"),
+                "pe_ttm_ratio": quote.get("pe_ttm_ratio"),
+                "pb_ratio": quote.get("pb_ratio"),
                 "ev_to_ebitda": key_metrics.get("ev_to_ebitda"),
                 "ev_to_sales": key_metrics.get("ev_to_sales"),
                 "market_cap": quote.get("market_cap"),
@@ -52,7 +56,7 @@ async def fundamental_agent(state: AnalysisState) -> dict:
                 "revenue_growth_pct": rev_growth_pct,
                 "eps_growth_pct": eps_growth_pct,
                 "latest_revenue": revenues[0] if revenues else None,
-                "latest_eps": eps_list[0] if eps_list else None,
+                "latest_eps": (eps_list[0] if eps_list else None) or quote.get("eps"),
             },
             # Quality
             "quality": {
