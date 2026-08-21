@@ -24,11 +24,8 @@ def build_decision_prompt(
     growth = f.get("growth", {})
     quality = f.get("quality", {})
 
-    analyst = s.get("analyst", {})
     timing = s.get("timing", {})
     news = s.get("news", [])
-    targets = analyst.get("price_targets", {})
-    recs = (analyst.get("recommendations") or [{}])[0]
 
     headlines = (
         "\n".join(
@@ -47,8 +44,8 @@ def build_decision_prompt(
 
     etf_note = (
         "\nNote: This is an ETF or fund. Fundamental metrics (PE, ROE, Piotroski) "
-        "do not apply. Base your verdict on price action, 52-week range, analyst "
-        "targets, and news.\n"
+        "do not apply. Base your verdict on price action, the 52-week range, "
+        "and news.\n"
         if is_etf
         else ""
     )
@@ -101,9 +98,6 @@ Sector: {profile.get('sector', 'N/A')} | Industry: {profile.get('industry', 'N/A
 Current price:     ${timing.get('current_price', 'N/A')}
 52w range:         ${timing.get('fifty_two_week_low', 'N/A')} – ${timing.get('fifty_two_week_high', 'N/A')}
 Position in range: {timing.get('position_in_52w_range', 'N/A')} (0=low, 1=high)
-Analyst targets:   low ${targets.get('low', 'N/A')} / mean ${targets.get('mean', 'N/A')} / high ${targets.get('high', 'N/A')}
-Upside to mean:    {analyst.get('upside_to_target_pct', 'N/A')}%
-Analyst ratings:   strongBuy={recs.get('strong_buy', 0)} buy={recs.get('buy', 0)} hold={recs.get('hold', 0)} sell={recs.get('sell', 0)} | consensus {recs.get('consensus') or 'N/A'}
 
 ## Recent News
 {headlines}
@@ -116,7 +110,7 @@ Max position size: {preferences.get('max_position_size', 0.1) * 100:.0f}% of por
 ## Instructions
 Based on all available data, provide your investment verdict (BUY, HOLD, or SELL).
 Use INSUFFICIENT_DATA ONLY if current price is unavailable and no news exists — not merely because fundamental metrics are missing.
-For ETFs or when fundamentals are absent, rely on price action, 52-week range, analyst consensus, and recent news.
+For ETFs or when fundamentals are absent, rely on price action, the 52-week range, and recent news.
 Consider sector-appropriate valuation benchmarks (e.g. high-growth tech warrants higher multiples).
 Be concise but specific. Cite 2–3 key reasons for your verdict.
 """

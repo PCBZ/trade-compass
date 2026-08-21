@@ -9,14 +9,13 @@ import httpx
 
 from ..state import AnalysisState
 from ..tools.market_data import (
-    fetch_analyst_ratings,
     fetch_financials,
     fetch_key_metrics,
-    fetch_news,
     fetch_profile,
     fetch_quote,
     fetch_scores,
 )
+from ..tools.news import fetch_news
 from ..tools.portfolio_api import get_holdings, get_preferences, get_quote
 
 log = logging.getLogger(__name__)
@@ -29,7 +28,6 @@ _SOURCES = (
     ("financials", dict),
     ("scores", dict),
     ("news", list),
-    ("analyst", dict),
     ("holdings", list),
     ("preferences", dict),
     ("opend_quote", dict),
@@ -39,7 +37,8 @@ _SOURCES = (
 async def data_agent(state: AnalysisState) -> dict:
     """
     Fetches all raw data needed by downstream agents in parallel:
-      - FMP: quote, profile, key_metrics, financials, news, analyst_ratings
+      - FMP: quote, profile, key_metrics, financials
+      - Nasdaq RSS: headlines
       - REST API: current holdings, user preferences, OpenD quote snapshot
 
     Writes: raw_data, holdings, preferences
@@ -58,7 +57,6 @@ async def data_agent(state: AnalysisState) -> dict:
                 fetch_financials(client, ticker),
                 fetch_scores(client, ticker),
                 fetch_news(client, ticker),
-                fetch_analyst_ratings(client, ticker),
                 get_holdings(),
                 get_preferences(),
                 get_quote(ticker),
@@ -79,7 +77,6 @@ async def data_agent(state: AnalysisState) -> dict:
             financials,
             scores,
             news,
-            analyst,
             holdings,
             preferences,
             opend_quote,
@@ -98,7 +95,6 @@ async def data_agent(state: AnalysisState) -> dict:
                 "financials": financials,
                 "scores": scores,
                 "news": news,
-                "analyst": analyst,
             },
             "holdings": holdings,
             "preferences": preferences,

@@ -91,6 +91,39 @@ class Quote(BaseModel):
     )
 
 
+
+class CacheEntry(BaseModel):
+    """A cached upstream response, shared across Cloud Run instances.
+
+    The bot scales to zero, so an in-process cache would almost never hit:
+    scheduled pushes are 90 minutes apart and each one queries a different
+    symbol per request. This collection is that shared memory.
+
+    `expires_at` marks logical freshness only. Entries are deliberately kept
+    past it so a caller can serve a stale copy when upstream is unavailable;
+    a TTL index on `fetched_at` purges them for real after 90 days.
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "key": "/key-metrics?limit=1&symbol=MU",
+                "payload": [{"symbol": "MU", "returnOnEquity": 0.085}],
+                "fetched_at": "2026-08-21T18:00:00Z",
+                "expires_at": "2026-08-28T18:00:00Z",
+            }
+        }
+    )
+
+    key: str = Field(description="Cache key, e.g. '/profile?symbol=MU'")
+    payload: list | dict = Field(description="Cached upstream response, verbatim")
+    fetched_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="When the payload was retrieved (UTC)",
+    )
+    expires_at: datetime = Field(description="When the payload stops being fresh (UTC)")
+
+
 class Decision(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={

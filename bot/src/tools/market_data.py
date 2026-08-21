@@ -9,14 +9,40 @@ Aggregation happens in data_agent, not here.
 
 from __future__ import annotations
 
+import logging
 import os
+from datetime import datetime, timedelta, timezone
 from typing import Any
+from urllib.parse import urlencode
 
 import httpx
 
+from .portfolio_api import get_cache_entry, put_cache_entry
+
+log = logging.getLogger(__name__)
+
 _BASE = "https://financialmodelingprep.com/stable"
 _API_KEY = os.environ.get("FMP_API_KEY", "")
-_NO_DATA_STATUSES = frozenset({401, 402, 403, 404, 429})
+
+# Subscription boundaries: no data now, and none tomorrow either. 429 is
+# handled separately because it clears at midnight.
+_NO_DATA_STATUSES = frozenset({401, 402, 403, 404})
+
+# Freshness per endpoint. Absent means never cached — /quote must be live.
+_CACHE_TTL = {
+    "/profile": timedelta(days=30),
+    "/key-metrics": timedelta(days=7),
+    "/income-statement": timedelta(days=7),
+    "/financial-scores": timedelta(days=7),
+}
+
+# Caching the empty answer stops us asking 5x a day for a restricted symbol.
+# Short enough that an upgraded plan is picked up the next day.
+_NEGATIVE_TTL = timedelta(hours=24)
+
+
+class QuotaExceeded(RuntimeError):
+    """FMP's daily cap. Transient, so never cached as an answer."""
 
 
 def _key() -> dict[str, str]:
@@ -29,9 +55,26 @@ def _normalize_ticker(ticker: str) -> str:
     return ticker.replace(".", "-")
 
 
-async def _get(client: httpx.AsyncClient, path: str, **params: Any) -> Any:
-    """GET a /stable/ endpoint. Returns [] gracefully on 4xx (free tier limits)."""
+def _cache_key(path: str, params: dict[str, Any]) -> str:
+    return f"{path}?{urlencode(sorted(params.items()))}"
+
+
+def _is_fresh(entry: dict[str, Any]) -> bool:
+    raw = entry.get("expires_at")
+    if not raw:
+        return False
+    expires_at = datetime.fromisoformat(raw)
+    if expires_at.tzinfo is None:
+        # Mongo stores BSON dates as UTC and hands them back naive
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    return expires_at > datetime.now(timezone.utc)
+
+
+async def _fetch(client: httpx.AsyncClient, path: str, params: dict[str, Any]) -> Any:
+    """One request. Returns [] when the plan has no data; raises on the daily cap."""
     resp = await client.get(f"{_BASE}{path}", params={**_key(), **params}, timeout=10)
+    if resp.status_code == 429:
+        raise QuotaExceeded(f"FMP daily limit reached on {path}")
     if resp.status_code in _NO_DATA_STATUSES:
         return []
     resp.raise_for_status()
@@ -44,6 +87,57 @@ async def _get(client: httpx.AsyncClient, path: str, **params: Any) -> Any:
     if isinstance(data, str):
         return []
     return data
+
+
+async def _get(client: httpx.AsyncClient, path: str, **params: Any) -> Any:
+    """GET a /stable/ endpoint, reading through the shared cache when eligible.
+
+    Returns [] rather than raising whenever data is merely unavailable, so one
+    restricted endpoint costs one field instead of the whole ticker.
+    """
+    ttl = _CACHE_TTL.get(path)
+    if ttl is None:
+        try:
+            return await _fetch(client, path, params)
+        except QuotaExceeded as exc:
+            log.warning("%s", exc)
+            return []
+
+    key = _cache_key(path, params)
+    try:
+        cached = await get_cache_entry(key)
+    except Exception as exc:  # noqa: BLE001 — the cache is an optimisation
+        log.warning("cache read failed for %s: %r", key, exc)
+        cached = {}
+
+    if cached and _is_fresh(cached):
+        return cached["payload"]
+
+    try:
+        payload = await _fetch(client, path, params)
+    except Exception as exc:  # noqa: BLE001
+        if cached:
+            log.warning(
+                "%s failed (%r); serving copy from %s",
+                path,
+                exc,
+                cached.get("fetched_at"),
+            )
+            return cached["payload"]
+        if isinstance(exc, QuotaExceeded):
+            log.warning("%s", exc)
+            return []
+        raise
+
+    try:
+        await put_cache_entry(
+            key,
+            payload,
+            datetime.now(timezone.utc) + (_NEGATIVE_TTL if payload == [] else ttl),
+        )
+    except Exception as exc:  # noqa: BLE001
+        log.warning("cache write failed for %s: %r", key, exc)
+    return payload
 
 
 # ── One function per FMP endpoint ────────────────────────────────────────────
@@ -165,72 +259,4 @@ async def fetch_scores(client: httpx.AsyncClient, ticker: str) -> dict[str, Any]
     return {
         "piotroski_score": s.get("piotroskiScore"),
         "altman_z_score": s.get("altmanZScore"),
-    }
-
-
-async def fetch_news(
-    client: httpx.AsyncClient, ticker: str, limit: int = 8
-) -> list[dict[str, Any]]:
-    """Recent news headlines. Returns [] if restricted on free tier.
-
-    Source: GET /stable/news/stock?symbols=&limit=
-    """
-    data = await _get(
-        client, "/news/stock", symbols=_normalize_ticker(ticker), limit=limit
-    )
-    return [
-        {
-            "title": item.get("title", ""),
-            "publisher": item.get("site", ""),
-            "link": item.get("url", ""),
-            "published_at": item.get("publishedDate", ""),
-            "summary": item.get("text", ""),
-        }
-        for item in (data or [])
-        if isinstance(item, dict)
-    ]
-
-
-async def fetch_analyst_ratings(
-    client: httpx.AsyncClient, ticker: str
-) -> dict[str, Any]:
-    """Analyst price targets and recommendation breakdown.
-
-    Sources:
-      GET /stable/price-target-consensus?symbol=
-      GET /stable/grades-consensus?symbol=
-
-    grades-consensus is a single current tally, not a series of periods, so
-    recommendations is a one-element list to keep the downstream shape stable.
-    """
-    import asyncio
-
-    fmp_ticker = _normalize_ticker(ticker)
-    targets_data, recs_data = await asyncio.gather(
-        _get(client, "/price-target-consensus", symbol=fmp_ticker),
-        _get(client, "/grades-consensus", symbol=fmp_ticker),
-    )
-
-    targets = targets_data[0] if targets_data else {}
-    rec_list = [
-        {
-            "consensus": row.get("consensus", ""),
-            "strong_buy": row.get("strongBuy", 0),
-            "buy": row.get("buy", 0),
-            "hold": row.get("hold", 0),
-            "sell": row.get("sell", 0),
-            "strong_sell": row.get("strongSell", 0),
-        }
-        for row in (recs_data or [])
-        if isinstance(row, dict)
-    ]
-
-    return {
-        "price_targets": {
-            "low": targets.get("targetLow"),
-            "mean": targets.get("targetConsensus"),
-            "median": targets.get("targetMedian"),
-            "high": targets.get("targetHigh"),
-        },
-        "recommendations": rec_list,
     }

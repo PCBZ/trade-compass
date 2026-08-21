@@ -6,6 +6,7 @@ Reads API_URL and API_KEY from environment (set via bot/.env).
 from __future__ import annotations
 
 import os
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -47,6 +48,36 @@ async def get_preferences() -> dict[str, Any]:
         )
         resp.raise_for_status()
         return resp.json()
+
+
+async def get_cache_entry(key: str) -> dict[str, Any]:
+    """GET /cache?key= — returns {} on a miss.
+
+    Entries past expires_at are returned too; judging freshness is the caller's
+    job so it can fall back to a stale copy when upstream is unavailable.
+    """
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{_API_URL}/cache", params={"key": key}, headers=_headers(), timeout=10
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def put_cache_entry(key: str, payload: Any, expires_at: datetime) -> None:
+    """PUT /cache — store or replace the entry for `key`."""
+    async with httpx.AsyncClient() as client:
+        resp = await client.put(
+            f"{_API_URL}/cache",
+            json={
+                "key": key,
+                "payload": payload,
+                "expires_at": expires_at.isoformat(),
+            },
+            headers=_headers(),
+            timeout=10,
+        )
+        resp.raise_for_status()
 
 
 async def post_decision(symbol: str, verdict: str, reasoning: str) -> None:
