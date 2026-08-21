@@ -103,7 +103,7 @@ Current price:     ${timing.get('current_price', 'N/A')}
 Position in range: {timing.get('position_in_52w_range', 'N/A')} (0=low, 1=high)
 Analyst targets:   low ${targets.get('low', 'N/A')} / mean ${targets.get('mean', 'N/A')} / high ${targets.get('high', 'N/A')}
 Upside to mean:    {analyst.get('upside_to_target_pct', 'N/A')}%
-Analyst ratings:   strongBuy={recs.get('strong_buy', 0)} buy={recs.get('buy', 0)} hold={recs.get('hold', 0)} sell={recs.get('sell', 0)}
+Analyst ratings:   strongBuy={recs.get('strong_buy', 0)} buy={recs.get('buy', 0)} hold={recs.get('hold', 0)} sell={recs.get('sell', 0)} | consensus {recs.get('consensus') or 'N/A'}
 
 ## Recent News
 {headlines}

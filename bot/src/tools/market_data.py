@@ -173,9 +173,11 @@ async def fetch_news(
 ) -> list[dict[str, Any]]:
     """Recent news headlines. Returns [] if restricted on free tier.
 
-    Source: GET /stable/news?tickers=&limit=
+    Source: GET /stable/news/stock?symbols=&limit=
     """
-    data = await _get(client, "/news", tickers=_normalize_ticker(ticker), limit=limit)
+    data = await _get(
+        client, "/news/stock", symbols=_normalize_ticker(ticker), limit=limit
+    )
     return [
         {
             "title": item.get("title", ""),
@@ -196,25 +198,28 @@ async def fetch_analyst_ratings(
 
     Sources:
       GET /stable/price-target-consensus?symbol=
-      GET /stable/analyst-recommendation?symbol=
+      GET /stable/grades-consensus?symbol=
+
+    grades-consensus is a single current tally, not a series of periods, so
+    recommendations is a one-element list to keep the downstream shape stable.
     """
     import asyncio
 
     fmp_ticker = _normalize_ticker(ticker)
     targets_data, recs_data = await asyncio.gather(
         _get(client, "/price-target-consensus", symbol=fmp_ticker),
-        _get(client, "/analyst-recommendation", symbol=fmp_ticker, limit=2),
+        _get(client, "/grades-consensus", symbol=fmp_ticker),
     )
 
     targets = targets_data[0] if targets_data else {}
     rec_list = [
         {
-            "period": row.get("date", ""),
-            "strong_buy": row.get("analystRatingsStrongBuy", 0),
-            "buy": row.get("analystRatingsBuy", 0),
-            "hold": row.get("analystRatingsHold", 0),
-            "sell": row.get("analystRatingsSell", 0),
-            "strong_sell": row.get("analystRatingsStrongSell", 0),
+            "consensus": row.get("consensus", ""),
+            "strong_buy": row.get("strongBuy", 0),
+            "buy": row.get("buy", 0),
+            "hold": row.get("hold", 0),
+            "sell": row.get("sell", 0),
+            "strong_sell": row.get("strongSell", 0),
         }
         for row in (recs_data or [])
         if isinstance(row, dict)

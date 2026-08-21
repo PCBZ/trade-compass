@@ -11,6 +11,19 @@ from __future__ import annotations
 from ..state import AnalysisState
 
 
+def _roe_from_book_value(quote: dict) -> float | None:
+    """Trailing ROE from the OpenD snapshot: EPS / book value per share.
+
+    FMP answers 402 for returnOnEquity on most symbols. This keeps a comparable
+    figure available, in the same unit as FMP's (0.085 = 8.5%).
+    """
+    eps = quote.get("eps")
+    book_value = quote.get("net_asset_per_share")
+    if eps is None or not book_value:
+        return None
+    return round(eps / book_value, 4)
+
+
 async def fundamental_agent(state: AnalysisState) -> dict:
     """
     Organises fundamental context from raw_data.
@@ -21,6 +34,11 @@ async def fundamental_agent(state: AnalysisState) -> dict:
     key_metrics = raw.get("key_metrics", {})
     financials = raw.get("financials", {})
     scores = raw.get("scores", {})
+
+    # FMP first; the snapshot-derived figure only fills a genuine gap
+    roe = key_metrics.get("return_on_equity")
+    if roe is None:
+        roe = _roe_from_book_value(quote)
 
     revenues = financials.get("total_revenue", [])
     eps_list = financials.get("diluted_eps", [])
@@ -60,7 +78,7 @@ async def fundamental_agent(state: AnalysisState) -> dict:
             },
             # Quality
             "quality": {
-                "return_on_equity": key_metrics.get("return_on_equity"),
+                "return_on_equity": roe,
                 "return_on_invested_capital": key_metrics.get(
                     "return_on_invested_capital"
                 ),
