@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -116,7 +116,7 @@ class CacheEntry(BaseModel):
     )
 
     key: str = Field(description="Cache key, e.g. '/profile?symbol=MU'")
-    payload: list | dict = Field(description="Cached upstream response, verbatim")
+    payload: Any = Field(description="Cached value, verbatim")
     fetched_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         description="When the payload was retrieved (UTC)",

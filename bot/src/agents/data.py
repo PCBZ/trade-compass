@@ -8,12 +8,11 @@ import logging
 import httpx
 
 from ..state import AnalysisState
+from ..tools.edgar import fetch_fundamentals
 from ..tools.market_data import (
-    fetch_financials,
     fetch_key_metrics,
     fetch_profile,
     fetch_quote,
-    fetch_scores,
 )
 from ..tools.news import fetch_news
 from ..tools.portfolio_api import get_holdings, get_preferences, get_quote
@@ -25,9 +24,8 @@ _SOURCES = (
     ("quote", dict),
     ("profile", dict),
     ("key_metrics", dict),
-    ("financials", dict),
-    ("scores", dict),
     ("news", list),
+    ("edgar", dict),
     ("holdings", list),
     ("preferences", dict),
     ("opend_quote", dict),
@@ -37,8 +35,9 @@ _SOURCES = (
 async def data_agent(state: AnalysisState) -> dict:
     """
     Fetches all raw data needed by downstream agents in parallel:
-      - FMP: quote, profile, key_metrics, financials
+      - FMP: quote, profile, key_metrics
       - Nasdaq RSS: headlines
+      - SEC EDGAR: annual statements
       - REST API: current holdings, user preferences, OpenD quote snapshot
 
     Writes: raw_data, holdings, preferences
@@ -47,16 +46,15 @@ async def data_agent(state: AnalysisState) -> dict:
 
     try:
         async with httpx.AsyncClient() as client:
-            # 8 FMP requests + 2 REST API calls in parallel. Sources fail
-            # independently — a restricted symbol must not sink the whole ticker,
-            # so each failure degrades to an empty value and is logged.
+            # Sources fail independently: a symbol FMP will not serve must
+            # not sink the whole ticker, so each failure degrades to an empty
+            # value and is logged rather than raised.
             results = await asyncio.gather(
                 fetch_quote(client, ticker),
                 fetch_profile(client, ticker),
                 fetch_key_metrics(client, ticker),
-                fetch_financials(client, ticker),
-                fetch_scores(client, ticker),
                 fetch_news(client, ticker),
+                fetch_fundamentals(client, ticker),
                 get_holdings(),
                 get_preferences(),
                 get_quote(ticker),
@@ -74,9 +72,8 @@ async def data_agent(state: AnalysisState) -> dict:
             quote,
             profile,
             key_metrics,
-            financials,
-            scores,
             news,
+            edgar,
             holdings,
             preferences,
             opend_quote,
@@ -92,9 +89,8 @@ async def data_agent(state: AnalysisState) -> dict:
                 "quote": quote,
                 "profile": profile,
                 "key_metrics": key_metrics,
-                "financials": financials,
-                "scores": scores,
                 "news": news,
+                "edgar": edgar,
             },
             "holdings": holdings,
             "preferences": preferences,

@@ -82,3 +82,13 @@ async def test_missing_api_key_is_rejected(client):
 async def test_wrong_api_key_is_rejected(client):
     r = await client.get("/cache", params={"key": _KEY}, headers={"X-API-Key": "nope"})
     assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_scalar_payload_is_storable(client):
+    """A resolved CIK is a bare string, not a list or dict."""
+    await client.put(
+        "/cache", json=_entry(key="edgar-cik:MU", payload="0000723125"), headers=HEADERS
+    )
+    r = await client.get("/cache", params={"key": "edgar-cik:MU"}, headers=HEADERS)
+    assert r.json()["payload"] == "0000723125"
