@@ -37,16 +37,20 @@ flowchart TD
 
     DB[("MongoDB Atlas M0<br/>holdings · quotes · preferences · cache")]
     SCHED["Cloud Scheduler<br/>5 jobs/day"]
-    FMP["Financial Modeling Prep"]
+    FMP["Financial Modeling Prep<br/>price, profile, ratios"]
+    EDGAR["SEC EDGAR<br/>annual statements"]
+    NEWS["Nasdaq RSS<br/>headlines"]
     LLM["OpenRouter"]
 
     User <-->|webhook| BOT
     SCHED -->|POST /push| BOT
     BOT --> FMP
+    BOT --> EDGAR
+    BOT --> NEWS
     BOT --> LLM
     BOT <-->|REST| API
     API <--> DB
-    VM -->|POST /holdings| API
+    VM -->|POST /holdings + /quotes| API
 ```
 
 Three deployable units, one database:
@@ -55,7 +59,7 @@ Three deployable units, one database:
 |------|---------|----------------|
 | [`bot/`](bot/) | Cloud Run | LangGraph agents, Telegram webhook, scheduled pushes |
 | [`api/`](api/) | Cloud Run | FastAPI data layer over MongoDB (holdings, quotes, preferences, cache) |
-| [`sync/`](sync/) | Compute Engine | Moomoo OpenD client, cron-driven position push |
+| [`sync/`](sync/) | Compute Engine | Moomoo OpenD client; cron-driven position and quote push |
 
 All infrastructure is Terraform ([`terraform/`](terraform/)).
 
@@ -78,10 +82,10 @@ flowchart LR
 
 | Node | Does | LLM? |
 |------|------|------|
-| [`data_agent`](bot/src/agents/data.py) | Fetches 8 sources in parallel — 6 FMP endpoints plus holdings and preferences | — |
-| [`fundamental_agent`](bot/src/agents/fundamental.py) | Organises valuation, YoY growth, quality ratios, Piotroski / Altman-Z | — |
-| [`sentiment_agent`](bot/src/agents/sentiment.py) | Organises analyst targets, 52-week position, news headlines | — |
-| [`decision_agent`](bot/src/agents/decision.py) | Synthesises everything into a structured verdict, persists to MongoDB | ✅ |
+| [`data_agent`](bot/src/agents/data.py) | Fetches 8 sources in parallel — 3 FMP endpoints, SEC EDGAR, Nasdaq RSS, and 3 calls to our own API | — |
+| [`fundamental_agent`](bot/src/agents/fundamental.py) | Organises valuation, YoY growth, quality ratios; computes Piotroski / Altman-Z | — |
+| [`sentiment_agent`](bot/src/agents/sentiment.py) | Organises 52-week position and news headlines | — |
+| [`decision_agent`](bot/src/agents/decision.py) | Synthesises everything into a structured verdict | ✅ |
 | [`portfolio_agent`](bot/src/agents/portfolio.py) | Runs the single-stock subgraph per holding, then scores concentration | — |
 
 Two design choices worth knowing:
@@ -90,7 +94,7 @@ Two design choices worth knowing:
    plain Python — they compute derived metrics and shape context. One analysis costs
    exactly one LLM call.
 2. **Objective anchors come from data, not the model.** Piotroski F-Score and Altman
-   Z-Score are pulled pre-computed from FMP rather than inferred, and the verdict is
+   Z-Score are computed from SEC filings rather than inferred, and the verdict is
    forced through a Pydantic schema via `with_structured_output`.
 
 Routing lives in conditional edges ([`graph/workflow.py`](bot/src/graph/workflow.py)),
@@ -156,6 +160,8 @@ Models are defined in [`api/src/models.py`](api/src/models.py).
 - API keys: [Telegram BotFather](https://t.me/botfather),
   [Financial Modeling Prep](https://site.financialmodelingprep.com/),
   [OpenRouter](https://openrouter.ai/)
+- A contact email for `SEC_CONTACT`. SEC EDGAR and the Nasdaq RSS feed need no key,
+  but EDGAR rejects any request whose User-Agent carries no email address
 
 ### 1. Configure
 
@@ -188,7 +194,7 @@ generated API key are printed at the end.
 OpenD needs interactive credentials, so the VM bootstrap stops short of starting it:
 
 ```bash
-gcloud compute ssh trade-compass-vm --zone us-west1-a
+gcloud compute ssh trade-compass --zone us-west1-b
 ```
 
 Then on the VM, edit `OpenD.xml` with your Moomoo login (the bootstrap log prints the
@@ -198,8 +204,14 @@ exact path), and:
 sudo systemctl start moomoo-opend && sudo bash /opt/trade-compass/sync/setup_cron.sh
 ```
 
-Cron then runs the sync every 5 minutes, 13:30–20:00 UTC, Mon–Fri.
-Logs land in `/var/log/trade-compass-sync.log`.
+Cron then runs the sync every 5 minutes, 13:30–20:00 UTC, Mon–Fri, pushing both
+positions and an OpenD price snapshot. Logs land in `/var/log/trade-compass-sync.log`.
+
+**Do not skip `setup_cron.sh`.** The bootstrap never installs it, and nothing else
+will: without it the sync only ever runs when you run it by hand, and holdings sit
+frozen at whatever was last pushed. `sudo crontab -l` should list three entries, and
+the log file should exist. Both are worth re-checking after any VM recreate — changing
+`bootstrap.sh` replaces the instance, which wipes the crontab and `OpenD.xml` with it.
 
 ---
 
@@ -262,6 +274,7 @@ and `ruff format --check` across `api/src bot/src sync/src`, `terraform fmt` plu
 | `OPENROUTER_API_KEY` | bot | OpenRouter |
 | `TELEGRAM_BOT_TOKEN` | bot | BotFather |
 | `TELEGRAM_CHAT_ID` | bot | Push destination |
+| `SEC_CONTACT` | bot | Contact email; EDGAR returns 403 without one |
 | `OPEND_HOST`, `OPEND_PORT` | sync | Defaults `127.0.0.1:11111` |
 
 ### LLM models
@@ -280,11 +293,17 @@ concentration-risk check. Set them with `PUT /preferences`.
 
 ## Limits and caveats
 
-- **FMP free tier is 250 requests/day**, and `data_agent` spends 8 per ticker. A
-  10-position `/portfolio` run costs ~80, so the five daily pushes alone exceed the quota.
-  Requests degrade quietly — [`_get`](bot/src/tools/market_data.py) returns `[]` on 429,
-  so the verdict silently loses inputs rather than erroring. Expect later pushes to be
-  thinner unless you upgrade the plan, cache responses, or trim the schedule.
+- **FMP's free tier serves only a fixed allowlist of symbols.** Everything outside it
+  answers `402`, and so does a symbol that does not exist — the two are
+  indistinguishable. The list is hand-picked with no derivable rule: AAPL, NVDA, AMD,
+  INTC and SPY work; MU, BRK-B, AVGO, QQQ and VOO do not. `/stock-list` is itself a paid
+  endpoint, so the allowlist cannot be queried. This, not the 250 requests/day cap, is
+  the real constraint. Price falls back to the OpenD snapshot and statements to EDGAR,
+  so a restricted symbol still gets analysed — it just loses the FMP-only ratios.
+- **Request volume.** `data_agent` spends 3 FMP requests per ticker. `/profile` is cached
+  for 30 days and `/key-metrics` for 7, so a steady-state push costs roughly one
+  request per holding. Empty answers are cached too, for 24 hours, which stops a
+  restricted symbol from being re-asked five times a day.
 - **Cold starts.** Cloud Run scales to zero, so the first Telegram command after an idle
   period takes a few extra seconds.
 - **The API is public with key-only auth.** Both Cloud Run services allow unauthenticated
@@ -292,9 +311,14 @@ concentration-risk check. Set them with `PUT /preferences`.
   on the bot are unauthenticated.
 - **Free OpenRouter models are rate-limited** and occasionally return malformed
   structured output; `decision_agent` falls back to `INSUFFICIENT_DATA` when that happens.
-- **Non-STOCK positions are skipped** by `/portfolio` — ETFs, funds, bonds, warrants, and
-  futures are filtered out, though `/decide` on an ETF ticker still works via a
-  fundamentals-free prompt path.
+- **Non-STOCK positions are skipped** by `/portfolio`. `security_type` comes from
+  OpenD's own classification, so ETFs, funds, bonds and warrants are filtered out before
+  any data is fetched. `/decide` on an ETF ticker still works: FMP's `isEtf` flag routes
+  it to a fundamentals-free prompt.
+- **Headlines are best-effort.** Nasdaq's per-symbol feed falls back to a generic market
+  firehose for a symbol it does not cover, so items are filtered by the tickers each one
+  declares. A holding with no genuinely related coverage gets no headlines rather than
+  unrelated ones — Berkshire is usually empty.
 
 ---
 
