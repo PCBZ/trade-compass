@@ -52,6 +52,9 @@ jobs:
       - name: Test
         run: cd api && pytest tests/ -v
 
+      - name: Test bot units
+        run: cd bot && pytest tests/unit -v
+
   shell:
     name: Shell
     runs-on: ubuntu-latest
