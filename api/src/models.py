@@ -38,7 +38,6 @@ class Holding(BaseModel):
     )
 
 
-
 class Quote(BaseModel):
     """Live market snapshot pushed by the sync script from Moomoo OpenD.
 
@@ -91,7 +90,6 @@ class Quote(BaseModel):
     )
 
 
-
 class CacheEntry(BaseModel):
     """A cached upstream response, shared across Cloud Run instances.
 
@@ -122,27 +120,6 @@ class CacheEntry(BaseModel):
         description="When the payload was retrieved (UTC)",
     )
     expires_at: datetime = Field(description="When the payload stops being fresh (UTC)")
-
-
-class Decision(BaseModel):
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "symbol": "NVDA",
-                "verdict": "BUY",
-                "reasoning": "Strong earnings growth and AI tailwind support continued upside.",
-                "created_at": "2026-05-09T10:00:00Z",
-            }
-        }
-    )
-
-    symbol: str = Field(description="Ticker symbol")
-    verdict: Literal["BUY", "HOLD", "SELL"] = Field(description="Investment verdict")
-    reasoning: str = Field(description="Agent reasoning for the verdict")
-    created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
-        description="Decision timestamp (UTC)",
-    )
 
 
 class Preferences(BaseModel):

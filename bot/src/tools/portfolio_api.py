@@ -78,13 +78,3 @@ async def put_cache_entry(key: str, payload: Any, expires_at: datetime) -> None:
             timeout=10,
         )
         resp.raise_for_status()
-
-
-async def post_decision(symbol: str, verdict: str, reasoning: str) -> None:
-    """POST /decisions — persists a BUY/HOLD/SELL verdict to MongoDB."""
-    payload = {"symbol": symbol.upper(), "verdict": verdict, "reasoning": reasoning}
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            f"{_API_URL}/decisions", json=payload, headers=_headers(), timeout=10
-        )
-        resp.raise_for_status()

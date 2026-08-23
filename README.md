@@ -35,7 +35,7 @@ flowchart TD
         VM["Moomoo OpenD<br/>sync/main.py via cron"]
     end
 
-    DB[("MongoDB Atlas M0<br/>holdings · decisions · preferences")]
+    DB[("MongoDB Atlas M0<br/>holdings · quotes · preferences · cache")]
     SCHED["Cloud Scheduler<br/>5 jobs/day"]
     FMP["Financial Modeling Prep"]
     LLM["OpenRouter"]
@@ -54,7 +54,7 @@ Three deployable units, one database:
 | Unit | Runs on | Responsibility |
 |------|---------|----------------|
 | [`bot/`](bot/) | Cloud Run | LangGraph agents, Telegram webhook, scheduled pushes |
-| [`api/`](api/) | Cloud Run | FastAPI data layer over MongoDB (holdings, decisions, preferences) |
+| [`api/`](api/) | Cloud Run | FastAPI data layer over MongoDB (holdings, quotes, preferences, cache) |
 | [`sync/`](sync/) | Compute Engine | Moomoo OpenD client, cron-driven position push |
 
 All infrastructure is Terraform ([`terraform/`](terraform/)).
@@ -133,11 +133,13 @@ All routes require an `X-API-Key` header. Interactive docs at `/docs`.
 |--------|------|--------|---------|
 | `GET` | `/holdings` | bot | Current positions |
 | `POST` | `/holdings` | sync | Replace the holdings snapshot |
-| `GET` | `/decisions` | bot | Verdict history |
-| `GET` | `/decisions/{symbol}` | bot | History for one symbol |
-| `POST` | `/decisions` | `decision_agent` | Persist a verdict |
+| `GET` | `/quotes` | — | Full market snapshot |
+| `GET` | `/quotes/{symbol}` | `data_agent` | Snapshot for one symbol |
+| `POST` | `/quotes` | sync | Replace the snapshot |
 | `GET` | `/preferences` | bot | Risk, sectors, position cap, model |
 | `PUT` | `/preferences` | `/model` handler, setup | Update preferences |
+| `GET` | `/cache` | bot | Read a cached upstream response |
+| `PUT` | `/cache` | bot | Store a cached upstream response |
 | `GET` | `/health` | Cloud Run | Liveness |
 
 Models are defined in [`api/src/models.py`](api/src/models.py).

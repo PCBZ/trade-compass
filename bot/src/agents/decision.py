@@ -1,8 +1,8 @@
 """Decision Agent — synthesises fundamental + sentiment via LLM.
 
 Calls OpenRouter LLM with structured output (with_structured_output).
-Outputs a DecisionOutput written to state["decision"].
-Persists verdict to trade-compass REST API.
+Outputs a DecisionOutput written to state["decision"]. The verdict is delivered
+to Telegram and not persisted: nothing read the stored history back.
 """
 
 from __future__ import annotations
@@ -13,7 +13,6 @@ from pydantic import BaseModel, Field
 
 from ..state import AnalysisState
 from ..tools.llm import get_llm
-from ..tools.portfolio_api import post_decision
 from ..tools.prompt import build_decision_prompt
 
 
@@ -47,7 +46,7 @@ class DecisionOutput(BaseModel):
 async def decision_agent(state: AnalysisState) -> dict:
     """
     Builds a structured prompt from fundamental + sentiment analysis,
-    calls OpenRouter LLM with structured output, persists result to REST API.
+    calls OpenRouter LLM with structured output.
     Writes: decision
     """
     ticker = state.get("ticker", "")
@@ -71,18 +70,6 @@ async def decision_agent(state: AnalysisState) -> dict:
             output_schema=DecisionOutput,
         )
         result: DecisionOutput = await llm.ainvoke(prompt)
-
-        # Persist to REST API — only for actionable verdicts (BUY/HOLD/SELL).
-        # INSUFFICIENT_DATA is not accepted by the API model and has nothing to store.
-        if result.verdict != "INSUFFICIENT_DATA":
-            try:
-                await post_decision(
-                    symbol=ticker,
-                    verdict=result.verdict,
-                    reasoning=result.thesis,
-                )
-            except Exception:  # noqa: BLE001
-                pass
 
         return {"decision": result.model_dump()}
 
