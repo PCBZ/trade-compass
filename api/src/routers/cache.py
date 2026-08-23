@@ -36,7 +36,5 @@ async def get_cache_entry(key: str):
 async def put_cache_entry(entry: CacheEntry):
     """Store or replace the entry for its key."""
     db = get_db()
-    await db.fmp_cache.replace_one(
-        {"key": entry.key}, entry.model_dump(), upsert=True
-    )
+    await db.fmp_cache.replace_one({"key": entry.key}, entry.model_dump(), upsert=True)
     return {"cached": 1}

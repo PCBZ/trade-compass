@@ -181,7 +181,9 @@ async def _resolve_cik(client: httpx.AsyncClient, ticker: str) -> str:
                 return str(row["cik_str"]).zfill(10)
         return ""
 
-    return await cached(f"edgar-cik:{_SCHEMA}:{ticker}", _CIK_TTL, load, empty_ttl=_EMPTY_TTL)
+    return await cached(
+        f"edgar-cik:{_SCHEMA}:{ticker}", _CIK_TTL, load, empty_ttl=_EMPTY_TTL
+    )
 
 
 async def fetch_fundamentals(
