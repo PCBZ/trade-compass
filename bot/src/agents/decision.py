@@ -12,7 +12,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 from ..state import AnalysisState
-from ..tools.llm import get_llm
+from ..tools.llm import ainvoke_with_fallback
 from ..tools.prompt import build_decision_prompt
 
 
@@ -64,12 +64,13 @@ async def decision_agent(state: AnalysisState) -> dict:
             preferences=preferences,
         )
 
-        # Model selected dynamically from user preferences (set via /model in bot)
-        llm = get_llm(
-            model=preferences.get("llm_model"),
+        # Model preference comes from /model in the bot; other configured models
+        # stand in when a free pool is saturated.
+        result: DecisionOutput = await ainvoke_with_fallback(
+            prompt,
             output_schema=DecisionOutput,
+            preferred=preferences.get("llm_model"),
         )
-        result: DecisionOutput = await llm.ainvoke(prompt)
 
         return {"decision": result.model_dump()}
 
