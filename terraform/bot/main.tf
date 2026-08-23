@@ -194,6 +194,11 @@ resource "google_cloud_run_v2_service" "bot" {
       }
 
       env {
+        name  = "SEC_CONTACT"
+        value = var.sec_contact
+      }
+
+      env {
         name = "API_KEY"
         value_source {
           secret_key_ref {

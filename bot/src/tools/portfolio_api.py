@@ -6,6 +6,7 @@ Reads API_URL and API_KEY from environment (set via bot/.env).
 from __future__ import annotations
 
 import os
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -26,6 +27,19 @@ async def get_holdings() -> list[dict[str, Any]]:
         return resp.json()
 
 
+async def get_quote(symbol: str) -> dict[str, Any]:
+    """GET /quotes/{symbol} — OpenD market snapshot pushed by the sync script.
+
+    Returns {} when the symbol is not a current holding.
+    """
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{_API_URL}/quotes/{symbol}", headers=_headers(), timeout=10
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
 async def get_preferences() -> dict[str, Any]:
     """GET /preferences — returns user risk/style/sector settings."""
     async with httpx.AsyncClient() as client:
@@ -36,11 +50,31 @@ async def get_preferences() -> dict[str, Any]:
         return resp.json()
 
 
-async def post_decision(symbol: str, verdict: str, reasoning: str) -> None:
-    """POST /decisions — persists a BUY/HOLD/SELL verdict to MongoDB."""
-    payload = {"symbol": symbol.upper(), "verdict": verdict, "reasoning": reasoning}
+async def get_cache_entry(key: str) -> dict[str, Any]:
+    """GET /cache?key= — returns {} on a miss.
+
+    Entries past expires_at are returned too; judging freshness is the caller's
+    job so it can fall back to a stale copy when upstream is unavailable.
+    """
     async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            f"{_API_URL}/decisions", json=payload, headers=_headers(), timeout=10
+        resp = await client.get(
+            f"{_API_URL}/cache", params={"key": key}, headers=_headers(), timeout=10
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def put_cache_entry(key: str, payload: Any, expires_at: datetime) -> None:
+    """PUT /cache — store or replace the entry for `key`."""
+    async with httpx.AsyncClient() as client:
+        resp = await client.put(
+            f"{_API_URL}/cache",
+            json={
+                "key": key,
+                "payload": payload,
+                "expires_at": expires_at.isoformat(),
+            },
+            headers=_headers(),
+            timeout=10,
         )
         resp.raise_for_status()

@@ -38,3 +38,9 @@ variable "openrouter_api_key" {
   type        = string
   sensitive   = true
 }
+
+variable "sec_contact" {
+  description = "Contact email declared to SEC EDGAR; it returns 403 without one"
+  type        = string
+  default     = ""
+}

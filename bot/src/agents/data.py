@@ -3,27 +3,42 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
 import httpx
 
 from ..state import AnalysisState
+from ..tools.edgar import fetch_fundamentals
 from ..tools.market_data import (
-    fetch_analyst_ratings,
-    fetch_financials,
     fetch_key_metrics,
-    fetch_news,
     fetch_profile,
     fetch_quote,
-    fetch_scores,
 )
-from ..tools.portfolio_api import get_holdings, get_preferences
+from ..tools.news import fetch_news
+from ..tools.portfolio_api import get_holdings, get_preferences, get_quote
+
+log = logging.getLogger(__name__)
+
+# Gather order, with the empty value to fall back to when a source fails.
+_SOURCES = (
+    ("quote", dict),
+    ("profile", dict),
+    ("key_metrics", dict),
+    ("news", list),
+    ("edgar", dict),
+    ("holdings", list),
+    ("preferences", dict),
+    ("opend_quote", dict),
+)
 
 
 async def data_agent(state: AnalysisState) -> dict:
     """
     Fetches all raw data needed by downstream agents in parallel:
-      - FMP: quote, profile, key_metrics, financials, news, analyst_ratings
-      - REST API: current holdings, user preferences
+      - FMP: quote, profile, key_metrics
+      - Nasdaq RSS: headlines
+      - SEC EDGAR: annual statements
+      - REST API: current holdings, user preferences, OpenD quote snapshot
 
     Writes: raw_data, holdings, preferences
     """
@@ -31,38 +46,51 @@ async def data_agent(state: AnalysisState) -> dict:
 
     try:
         async with httpx.AsyncClient() as client:
-            # All 6 FMP endpoints + 2 REST API calls in parallel
-            (
-                quote,
-                profile,
-                key_metrics,
-                financials,
-                scores,
-                news,
-                analyst,
-                holdings,
-                preferences,
-            ) = await asyncio.gather(
+            # Sources fail independently: a symbol FMP will not serve must
+            # not sink the whole ticker, so each failure degrades to an empty
+            # value and is logged rather than raised.
+            results = await asyncio.gather(
                 fetch_quote(client, ticker),
                 fetch_profile(client, ticker),
                 fetch_key_metrics(client, ticker),
-                fetch_financials(client, ticker),
-                fetch_scores(client, ticker),
                 fetch_news(client, ticker),
-                fetch_analyst_ratings(client, ticker),
+                fetch_fundamentals(client, ticker),
                 get_holdings(),
                 get_preferences(),
+                get_quote(ticker),
+                return_exceptions=True,
             )
+
+        values = []
+        for (label, empty), result in zip(_SOURCES, results):
+            if isinstance(result, Exception):
+                log.warning("%s: %s source failed: %r", ticker, label, result)
+                values.append(empty())
+            else:
+                values.append(result)
+        (
+            quote,
+            profile,
+            key_metrics,
+            news,
+            edgar,
+            holdings,
+            preferences,
+            opend_quote,
+        ) = values
+
+        # FMP's free tier answers 402 for most symbols; the OpenD snapshot covers
+        # every holding, at up to 5 minutes of staleness. Prefer FMP when it has
+        # something (it is real-time) and fall back to OpenD otherwise.
+        quote = quote or opend_quote
 
         return {
             "raw_data": {
                 "quote": quote,
                 "profile": profile,
                 "key_metrics": key_metrics,
-                "financials": financials,
-                "scores": scores,
                 "news": news,
-                "analyst": analyst,
+                "edgar": edgar,
             },
             "holdings": holdings,
             "preferences": preferences,
