@@ -13,10 +13,15 @@ from main import app  # noqa: E402
 
 @pytest_asyncio.fixture
 async def client():
-    database._client = AsyncMongoMockClient()
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        yield c
-    database._client = None
+    """Install a mock client so lifespan never opens a real connection."""
+    database.set_client(AsyncMongoMockClient())
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as c:
+            yield c
+    finally:
+        database.set_client(None)
 
 
 HEADERS = {"X-API-Key": "test-key"}
