@@ -5,11 +5,10 @@ in-process cache would almost never be warm. This one is shared by every
 instance and survives cold starts.
 """
 
-from __future__ import annotations
-
 import logging
-from datetime import datetime, timedelta, timezone
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from .portfolio_api import get_cache_entry, put_cache_entry
 
@@ -20,20 +19,26 @@ def _is_fresh(entry: dict[str, Any]) -> bool:
     raw = entry.get("expires_at")
     if not raw:
         return False
-    expires_at = datetime.fromisoformat(raw)
+    try:
+        expires_at = datetime.fromisoformat(raw)
+    except (TypeError, ValueError):
+        # A malformed timestamp must not sink the call: _is_fresh runs outside
+        # the caller's try, so treat the entry as stale and re-fetch.
+        log.warning("unparseable expires_at %r for %s", raw, entry.get("key", "?"))
+        return False
     if expires_at.tzinfo is None:
         # Mongo stores BSON dates as UTC and hands them back naive
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    return expires_at > datetime.now(timezone.utc)
+        expires_at = expires_at.replace(tzinfo=UTC)
+    return expires_at > datetime.now(UTC)
 
 
-async def cached(
+async def cached[T](
     key: str,
     ttl: timedelta,
-    loader: Callable[[], Awaitable[Any]],
+    loader: Callable[[], Awaitable[T]],
     *,
     empty_ttl: timedelta | None = None,
-) -> Any:
+) -> T:
     """Return `key`'s value, calling `loader` only when the copy is stale.
 
     On a loader failure a stale copy is served if one exists — a day-old
@@ -67,7 +72,7 @@ async def cached(
 
     chosen = empty_ttl if (empty_ttl is not None and not payload) else ttl
     try:
-        await put_cache_entry(key, payload, datetime.now(timezone.utc) + chosen)
+        await put_cache_entry(key, payload, datetime.now(UTC) + chosen)
     except Exception as exc:  # noqa: BLE001
         log.warning("cache write failed for %s: %r", key, exc)
     return payload
