@@ -41,7 +41,7 @@ jobs:
           python-version: "3.14"
 
       - name: Install dependencies
-        run: pip install -r api/requirements-dev.txt
+        run: pip install -r api/requirements-dev.txt -r bot/requirements.txt
 
       - name: Lint
         run: ruff check api/src/ bot/src/ sync/src/
