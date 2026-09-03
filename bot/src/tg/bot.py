@@ -7,8 +7,6 @@ Application.initialize() / shutdown() are called once via FastAPI lifespan,
 not on every request.
 """
 
-from __future__ import annotations
-
 import os
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator

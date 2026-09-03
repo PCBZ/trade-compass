@@ -7,8 +7,6 @@ Each function maps 1:1 to a single FMP endpoint.
 Aggregation happens in data_agent, not here.
 """
 
-from __future__ import annotations
-
 import logging
 import os
 from datetime import timedelta

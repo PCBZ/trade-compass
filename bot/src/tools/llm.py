@@ -10,8 +10,6 @@ with no warning, so a single-model call fails for reasons that have nothing to d
 with our request — hence `ainvoke_with_fallback`.
 """
 
-from __future__ import annotations
-
 import logging
 import os
 from typing import Any, Type

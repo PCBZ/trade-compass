@@ -11,8 +11,6 @@ Two compiled graphs are exported:
               └─► (portfolio) portfolio_agent → END
 """
 
-from __future__ import annotations
-
 from langgraph.graph import END, START, StateGraph
 
 from ..agents.data import data_agent

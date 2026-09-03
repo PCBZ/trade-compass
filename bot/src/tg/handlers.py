@@ -6,8 +6,6 @@
 /help           → list commands
 """
 
-from __future__ import annotations
-
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 

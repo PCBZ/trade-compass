@@ -1,7 +1,5 @@
 """Data Agent — fetches market data and holdings, populates shared state."""
 
-from __future__ import annotations
-
 import asyncio
 import logging
 

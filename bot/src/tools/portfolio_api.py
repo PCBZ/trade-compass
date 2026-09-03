@@ -3,8 +3,6 @@
 Reads API_URL and API_KEY from environment (set via bot/.env).
 """
 
-from __future__ import annotations
-
 import os
 from datetime import datetime
 from typing import Any

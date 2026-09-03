@@ -1,9 +1,10 @@
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
 
 from auth import require_api_key
-from database import connect, disconnect
+from database import lifespan
 from routers.cache import router as cache_router
 from routers.holdings import router as holdings_router
 from routers.preferences import router as preferences_router
@@ -11,20 +12,18 @@ from routers.quotes import router as quotes_router
 
 _REQUIRED_ENV = ["API_KEY", "MONGODB_URI"]
 
-app = FastAPI(title="trade-compass API", redirect_slashes=False)
 
-
-@app.on_event("startup")
-async def startup():
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    """Check config before connecting, then hand off to the database lifespan."""
     missing = [k for k in _REQUIRED_ENV if not os.getenv(k)]
     if missing:
         raise RuntimeError(f"Missing required env vars: {', '.join(missing)}")
-    await connect()
+    async with lifespan(app):
+        yield
 
 
-@app.on_event("shutdown")
-async def shutdown():
-    await disconnect()
+app = FastAPI(title="trade-compass API", redirect_slashes=False, lifespan=_lifespan)
 
 
 app.include_router(holdings_router, dependencies=[Depends(require_api_key)])

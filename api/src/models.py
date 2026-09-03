@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -33,7 +33,7 @@ class Holding(BaseModel):
     currency: str = Field(default="USD", description="Currency code")
     account: str = Field(default="", description="Account label, e.g. CASH or TFSA")
     updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="Last sync timestamp (UTC)",
     )
 
@@ -85,7 +85,7 @@ class Quote(BaseModel):
         default=None, description="Book value per share"
     )
     updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="Last sync timestamp (UTC)",
     )
 
@@ -116,7 +116,7 @@ class CacheEntry(BaseModel):
     key: str = Field(description="Cache key, e.g. '/profile?symbol=MU'")
     payload: Any = Field(description="Cached value, verbatim")
     fetched_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="When the payload was retrieved (UTC)",
     )
     expires_at: datetime = Field(description="When the payload stops being fresh (UTC)")

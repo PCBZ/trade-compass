@@ -11,8 +11,6 @@ Cloud Scheduler POSTs to /push with body: {"type": "pre_market"}
 TELEGRAM_CHAT_ID must be set in environment (your personal chat ID).
 """
 
-from __future__ import annotations
-
 import os
 
 from fastapi import APIRouter, HTTPException, Request

@@ -8,8 +8,6 @@ Run:
     python -m pytest bot/tests/test_fmp.py -v
 """
 
-from __future__ import annotations
-
 import pytest
 import httpx
 from pathlib import Path

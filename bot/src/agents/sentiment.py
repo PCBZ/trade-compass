@@ -4,8 +4,6 @@ No scoring here. Raw context is passed to decision_agent's LLM prompt,
 which interprets sentiment and timing in light of industry/narrative context.
 """
 
-from __future__ import annotations
-
 from ..state import AnalysisState
 
 

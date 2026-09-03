@@ -8,8 +8,6 @@ Run:
     python -m pytest bot/tests/test_openrouter.py -v
 """
 
-from __future__ import annotations
-
 import pytest
 from pathlib import Path
 from dotenv import load_dotenv

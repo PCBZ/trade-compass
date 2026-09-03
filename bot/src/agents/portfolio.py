@@ -6,8 +6,6 @@ the FMP free-tier rate limit with concurrent bursts).
 Detects concentration risk based on user preferences.
 """
 
-from __future__ import annotations
-
 from ..state import AnalysisState
 from ..tools.portfolio_api import get_preferences
 
@@ -20,7 +18,6 @@ _STOCK_TYPE = "STOCK"
 
 def _detect_concentration_risk(
     holdings: list[dict],
-    verdicts: list[dict],
     max_position_size: float,
 ) -> list[dict]:
     """
@@ -134,9 +131,7 @@ async def portfolio_agent(state: AnalysisState) -> dict:
             )
 
     max_position_size = preferences.get("max_position_size", 0.1)
-    concentration_risk = _detect_concentration_risk(
-        stock_holdings, verdicts, max_position_size
-    )
+    concentration_risk = _detect_concentration_risk(stock_holdings, max_position_size)
 
     return {
         "portfolio_summary": {

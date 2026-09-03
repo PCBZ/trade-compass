@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -8,7 +8,7 @@ _KEY = "/key-metrics?limit=1&symbol=MU"
 
 
 def _entry(**over):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     body = {
         "key": _KEY,
         "payload": [{"symbol": "MU", "returnOnEquity": 0.085}],
@@ -58,7 +58,7 @@ async def test_empty_payload_is_storable(client):
 @pytest.mark.asyncio
 async def test_expired_entry_is_still_returned(client):
     """Staleness is the caller's judgement, so the API must not hide it."""
-    past = datetime.now(timezone.utc) - timedelta(days=1)
+    past = datetime.now(UTC) - timedelta(days=1)
     await client.put("/cache", json=_entry(expires_at=past.isoformat()), headers=HEADERS)
     r = await client.get("/cache", params={"key": _KEY}, headers=HEADERS)
     assert r.json()["key"] == _KEY
