@@ -72,7 +72,7 @@ async def decision_agent(state: AnalysisState) -> dict:
 
         return {"decision": result.model_dump()}
 
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return {
             "decision": {
                 "verdict": "INSUFFICIENT_DATA",
