@@ -1,7 +1,5 @@
 """Shared state TypedDict for the LangGraph analysis workflow."""
 
-from __future__ import annotations
-
 from typing import Any, Literal, Optional
 from typing_extensions import TypedDict
 

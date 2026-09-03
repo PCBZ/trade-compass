@@ -5,8 +5,6 @@ Outputs a DecisionOutput written to state["decision"]. The verdict is delivered
 to Telegram and not persisted: nothing read the stored history back.
 """
 
-from __future__ import annotations
-
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field

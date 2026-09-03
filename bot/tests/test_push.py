@@ -13,8 +13,6 @@ Run:
     python3 -m pytest bot/tests/test_push.py -v -s
 """
 
-from __future__ import annotations
-
 import os
 import pytest
 import httpx

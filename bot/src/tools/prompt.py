@@ -4,8 +4,6 @@ Converts structured fundamental + sentiment analysis into a
 concise, information-dense prompt for the LLM.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 

@@ -6,8 +6,6 @@ the FMP free-tier rate limit with concurrent bursts).
 Detects concentration risk based on user preferences.
 """
 
-from __future__ import annotations
-
 from ..state import AnalysisState
 from ..tools.portfolio_api import get_preferences
 

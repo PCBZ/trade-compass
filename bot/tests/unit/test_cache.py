@@ -6,8 +6,6 @@ caller can see coming — `_is_fresh` runs outside `cached`'s try blocks, so
 anything it raises escapes the whole tool call.
 """
 
-from __future__ import annotations
-
 from datetime import UTC, datetime, timedelta
 
 import pytest

@@ -4,8 +4,6 @@ No network and no credentials: every test feeds a hand-built slice of XBRL
 company facts. The traps exercised here were all real bugs at some point.
 """
 
-from __future__ import annotations
-
 import json
 
 import pytest

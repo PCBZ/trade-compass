@@ -7,8 +7,6 @@ figures the filings already carry. No LLM call here.
 All data is passed as structured context to decision_agent's LLM prompt.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from ..state import AnalysisState

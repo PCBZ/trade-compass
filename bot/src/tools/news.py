@@ -7,8 +7,6 @@ Nasdaq resets the connection for non-browser User-Agents — httpx's default one
 times out — so the browser string below is load-bearing, not decoration.
 """
 
-from __future__ import annotations
-
 import logging
 import xml.etree.ElementTree as ET
 from typing import Any
