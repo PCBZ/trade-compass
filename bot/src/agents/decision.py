@@ -38,6 +38,34 @@ class DecisionOutput(BaseModel):
     )
 
 
+def _position(ticker: str, holdings: list[dict]) -> dict | None:
+    """The user's stake in `ticker`, or None when they do not hold it.
+
+    Weight needs the whole portfolio, not just the matching row, which is why
+    this takes the full list. `/decide` on an unheld ticker gets None and the
+    prompt omits the section entirely.
+    """
+    held = next((h for h in holdings if h.get("symbol") == ticker), None)
+    if not held:
+        return None
+
+    qty = held.get("qty") or 0
+    market_value = held.get("market_value") or 0
+    avg_cost = held.get("avg_cost") or 0
+    total = sum(h.get("market_value") or 0 for h in holdings)
+
+    price = market_value / qty if qty else None
+    return {
+        "qty": qty,
+        "avg_cost": avg_cost or None,
+        "market_value": market_value,
+        "weight_pct": round(market_value / total * 100, 1) if total else None,
+        "unrealized_pct": (
+            round((price / avg_cost - 1) * 100, 1) if price and avg_cost else None
+        ),
+    }
+
+
 # ── Agent ─────────────────────────────────────────────────────────────────────
 
 
@@ -52,6 +80,7 @@ async def decision_agent(state: AnalysisState) -> dict:
     fundamental = state.get("fundamental_analysis", {})
     sentiment = state.get("sentiment_analysis", {})
     preferences = state.get("preferences", {})
+    holdings = state.get("holdings") or []
 
     try:
         prompt = build_decision_prompt(
@@ -60,6 +89,7 @@ async def decision_agent(state: AnalysisState) -> dict:
             fundamental=fundamental,
             sentiment=sentiment,
             preferences=preferences,
+            position=_position(ticker, holdings),
         )
 
         # Model preference comes from /model in the bot; other configured models
