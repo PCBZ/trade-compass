@@ -1,0 +1,22 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	data_agent(data_agent)
+	fundamental_agent(fundamental_agent)
+	sentiment_agent(sentiment_agent)
+	decision_agent(decision_agent)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> data_agent;
+	decision_agent --> __end__;
+	fundamental_agent --> decision_agent;
+	sentiment_agent --> decision_agent;
+	data_agent -.-> fundamental_agent;
+	data_agent -.-> sentiment_agent;
+	data_agent -.-> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc
