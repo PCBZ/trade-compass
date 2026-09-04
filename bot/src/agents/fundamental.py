@@ -13,21 +13,6 @@ from ..state import AnalysisState
 from ..tools.edgar import altman_z, piotroski_score
 
 
-def _roe(reported: float | None, quote: dict) -> float | None:
-    """ROE as reported, else derived from the OpenD snapshot: EPS / book value.
-
-    FMP answers 402 for returnOnEquity on most symbols, so the snapshot fills
-    the gap in the same unit (0.085 = 8.5%). Compared against None rather than
-    falsiness: a real ROE can be 0 or negative.
-    """
-    if reported is not None:
-        return reported
-    eps, book_value = quote.get("eps"), quote.get("net_asset_per_share")
-    if eps is None or not book_value:
-        return None
-    return round(eps / book_value, 4)
-
-
 def _numbers(series: Any) -> list[float]:
     """Numeric values from an EDGAR series, newest first.
 
@@ -40,6 +25,28 @@ def _numbers(series: Any) -> list[float]:
     return [v for v in series if isinstance(v, (int, float))]
 
 
+def _roe(reported: float | None, edgar: dict, quote: dict) -> float | None:
+    """ROE as reported by FMP, else TTM net income over latest equity from the
+    filings, else the OpenD snapshot's EPS / book value.
+
+    FMP answers 402 for returnOnEquity on most symbols. The filings give the
+    proper trailing figure; OpenD's is only a last-resort annual approximation.
+    Compared against None rather than falsiness: a real ROE can be 0 or negative.
+    """
+    if reported is not None:
+        return reported
+
+    ni = _numbers(edgar.get("net_income"))
+    equity = _numbers(edgar.get("equity"))
+    if ni and equity and equity[0]:
+        return round(ni[0] / equity[0], 4)
+
+    eps, book_value = quote.get("eps"), quote.get("net_asset_per_share")
+    if eps is None or not book_value:
+        return None
+    return round(eps / book_value, 4)
+
+
 async def fundamental_agent(state: AnalysisState) -> dict:
     """
     Organises fundamental context from raw_data.
@@ -50,7 +57,7 @@ async def fundamental_agent(state: AnalysisState) -> dict:
     key_metrics = raw.get("key_metrics", {})
     edgar = raw.get("edgar", {})
 
-    roe = _roe(key_metrics.get("return_on_equity"), quote)
+    roe = _roe(key_metrics.get("return_on_equity"), edgar, quote)
 
     revenues = _numbers(edgar.get("revenue"))
     eps_list = _numbers(edgar.get("diluted_eps"))
@@ -70,12 +77,13 @@ async def fundamental_agent(state: AnalysisState) -> dict:
                 "piotroski": piotroski_score(edgar),  # 0–9
                 "altman_z": altman_z(edgar, quote.get("market_cap")),  # >2.99 safe
             },
-            # Valuation
-            # PE/PB fall back to the OpenD snapshot, which covers the symbols
-            # FMP's free tier refuses. EV multiples have no OpenD equivalent.
+            # Valuation. PE is the OpenD trailing-twelve-month ratio, which is
+            # real-time, market-consistent with the TTM EPS below, and covers
+            # every symbol; FMP's is a fallback for a non-held /decide ticker
+            # that has no OpenD snapshot. OpenD's annual-basis pe_ratio is not
+            # used — it put a 126 next to a 22 for the same name.
             "valuation": {
-                "pe_ratio": key_metrics.get("pe_ratio") or quote.get("pe_ratio"),
-                "pe_ttm_ratio": quote.get("pe_ttm_ratio"),
+                "pe_ratio": quote.get("pe_ttm_ratio") or key_metrics.get("pe_ratio"),
                 "pb_ratio": quote.get("pb_ratio"),
                 "ev_to_ebitda": key_metrics.get("ev_to_ebitda"),
                 "ev_to_sales": key_metrics.get("ev_to_sales"),
@@ -86,7 +94,10 @@ async def fundamental_agent(state: AnalysisState) -> dict:
                 "revenue_growth_pct": rev_growth_pct,
                 "eps_growth_pct": eps_growth_pct,
                 "latest_revenue": revenues[0] if revenues else None,
-                "latest_eps": (eps_list[0] if eps_list else None) or quote.get("eps"),
+                # TTM only — no annual fallback. OpenD's annual EPS would
+                # contradict the TTM PE above (Berkshire files no quarterly EPS,
+                # so it simply shows N/A rather than a mislabelled annual figure).
+                "latest_eps": eps_list[0] if eps_list else None,
             },
             # Quality
             "quality": {

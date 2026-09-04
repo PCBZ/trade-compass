@@ -1,160 +1,193 @@
-"""Unit tests for the SEC EDGAR extraction and scoring.
+"""Unit tests for the SEC EDGAR TTM extraction and scoring.
 
-No network and no credentials: every test feeds a hand-built slice of XBRL
-company facts. The traps exercised here were all real bugs at some point.
+No network, no credentials: every test feeds a hand-built slice of XBRL facts.
+The traps exercised here — the unreported Q4, a superseded tag that lingers,
+year-keyed dicts dying in the JSON cache — were all real bugs.
 """
+
+from __future__ import annotations
 
 import json
 
 import pytest
 
 from src.tools.edgar import (
-    _align,
+    _annual,
     _difference,
-    _pick,
-    _series,
+    _instant_at,
+    _kind,
+    _quarter_at,
+    _quarters,
+    _single_quarters,
+    _ttm,
     altman_z,
     piotroski_score,
 )
 
 
-def fact(val, start=None, end="2025-12-31", form="10-K", filed="2026-01-15", fy=2025):
-    entry = {"val": val, "end": end, "form": form, "filed": filed, "fy": fy, "fp": "FY"}
-    if start:
-        entry["start"] = start
-    return entry
+def dur(start, end, val, form="10-Q", filed="2026-01-15"):
+    return {"start": start, "end": end, "val": val, "form": form, "filed": filed}
 
 
-# ── _pick: collapsing raw facts to one value per fiscal year ──────────────────
+def inst(end, val, form="10-Q", filed="2026-01-15"):
+    return {"end": end, "val": val, "form": form, "filed": filed}
 
 
-def test_pick_keeps_annual_durations():
-    got = _pick([fact(100, start="2025-01-01", end="2025-12-31")], want_duration=True)
-    assert got == {2025: 100}
+# ── _kind ─────────────────────────────────────────────────────────────────────
 
 
-def test_pick_drops_quarterly_durations():
-    """A 10-K carries quarterly breakdowns too; only the full year is wanted."""
-    quarter = fact(25, start="2025-10-01", end="2025-12-31")
-    assert _pick([quarter], want_duration=True) == {}
+def test_kind_classifies_by_span():
+    assert _kind(dur("2025-01-01", "2025-12-31", 1)) == "annual"
+    assert _kind(dur("2025-01-01", "2025-03-31", 1)) == "quarter"
+    assert _kind(inst("2025-12-31", 1)) == "instant"
 
 
-def test_pick_accepts_52_and_53_week_years():
-    """Retail calendars run 364 or 371 days, not 365."""
-    got = _pick(
-        [
-            fact(1, start="2024-01-01", end="2024-12-30"),  # 364 days
-            fact(2, start="2025-01-01", end="2025-12-31"),
-        ],
-        want_duration=True,
-    )
-    assert got == {2025: 2, 2024: 1}
+def test_kind_rejects_cumulative_periods():
+    """A 6-month or 9-month cumulative must not be taken for a quarter."""
+    assert _kind(dur("2025-01-01", "2025-06-30", 1)) is None  # ~180 days
+    assert _kind(dur("2025-01-01", "2025-09-30", 1)) is None  # ~270 days
 
 
-def test_pick_ignores_non_10k_forms():
-    assert _pick([fact(9, start="2025-01-01", form="10-Q")], want_duration=True) == {}
+# ── _single_quarters: the Q4 gap ─────────────────────────────────────────────
 
 
-def test_pick_does_not_collapse_restated_years():
-    """The trap: a 10-K restates two prior years, and all three carry its own `fy`.
-
-    Keying on `fy` silently folds three different periods into one value.
-    """
+def test_derives_the_unreported_q4_from_the_annual():
+    """Three 10-Qs plus a 10-K → four single quarters, Q4 = annual − three."""
     entries = [
-        fact(37, start="2025-01-01", end="2025-12-31", fy=2025),
-        fact(25, start="2024-01-01", end="2024-12-31", fy=2025),
-        fact(15, start="2023-01-01", end="2023-12-31", fy=2025),
+        dur("2024-01-01", "2024-03-31", 10),
+        dur("2024-04-01", "2024-06-30", 20),
+        dur("2024-07-01", "2024-09-30", 30),
+        dur("2024-01-01", "2024-12-31", 100, form="10-K"),  # annual
     ]
-    assert _pick(entries, want_duration=True) == {2025: 37, 2024: 25, 2023: 15}
+    q = _single_quarters(entries)
+    assert q == [
+        ("2024-03-31", 10),
+        ("2024-06-30", 20),
+        ("2024-09-30", 30),
+        ("2024-12-31", 40),  # 100 − (10+20+30)
+    ]
 
 
-def test_pick_prefers_the_most_recent_filing():
-    """The same period reported twice — the later filing restated it."""
+def test_no_annual_means_no_derived_q4():
     entries = [
-        fact(100, start="2025-01-01", end="2025-12-31", filed="2026-01-15"),
-        fact(110, start="2025-01-01", end="2025-12-31", filed="2027-01-15"),
+        dur("2024-01-01", "2024-03-31", 10),
+        dur("2024-04-01", "2024-06-30", 20),
     ]
-    assert _pick(entries, want_duration=True) == {2025: 110}
+    assert _single_quarters(entries) == [("2024-03-31", 10), ("2024-06-30", 20)]
 
 
-def test_pick_separates_instant_from_duration():
-    instant = fact(500, end="2025-12-31")
-    duration = fact(900, start="2025-01-01", end="2025-12-31")
-    assert _pick([instant, duration], want_duration=False) == {2025: 500}
-    assert _pick([instant, duration], want_duration=True) == {2025: 900}
+def test_single_quarters_dedupes_newest_filing_wins():
+    entries = [
+        dur("2024-01-01", "2024-03-31", 10, filed="2024-05-01"),
+        dur("2024-01-01", "2024-03-31", 12, filed="2025-05-01"),  # restated later
+    ]
+    assert _single_quarters(entries) == [("2024-03-31", 12)]
 
 
-# ── _series: choosing between competing tags ──────────────────────────────────
+# ── _quarters: tag selection and staleness ───────────────────────────────────
 
 
 def _facts(**tags):
-    return {tag: {"units": {"USD": entries}} for tag, entries in tags.items()}
+    return {t: {"units": {"USD": rows}} for t, rows in tags.items()}
 
 
-def test_series_prefers_the_tag_covering_the_target_years():
-    """Micron tagged LongTermDebtNoncurrent until 2012 and LongTermDebt after.
+def _four_quarters(year, base):
+    return [
+        dur(f"{year}-01-01", f"{year}-03-31", base),
+        dur(f"{year}-04-01", f"{year}-06-30", base),
+        dur(f"{year}-07-01", f"{year}-09-30", base),
+        dur(f"{year}-10-01", f"{year}-12-31", base),
+    ]
 
-    Taking the first tag with any data at all returns a decade-old series that
-    does not overlap the years being analysed.
-    """
+
+def test_quarters_prefers_the_tag_reaching_furthest_forward():
+    """NVDA moved revenue to `Revenues` in 2020; the old tag still has old data."""
     facts = _facts(
-        StaleTag=[fact(3, start="2012-01-01", end="2012-12-31", fy=2012)],
-        CurrentTag=[
-            fact(11, start="2025-01-01", end="2025-12-31"),
-            fact(12, start="2024-01-01", end="2024-12-31", fy=2024),
+        OldTag=_four_quarters(2019, 5),
+        NewTag=_four_quarters(2019, 5) + _four_quarters(2025, 90),
+    )
+    got = _quarters(facts, ("OldTag", "NewTag"), "USD", anchor=None)
+    assert got[-1] == ("2025-12-31", 90)
+
+
+def test_quarters_rejects_a_tag_stale_against_the_anchor():
+    """A tag whose newest quarter lags the anchor by years is defunct."""
+    facts = _facts(Defunct=_four_quarters(2013, 5))
+    assert _quarters(facts, ("Defunct",), "USD", anchor="2026-06-30") == []
+
+
+def test_quarters_empty_when_tag_missing():
+    assert _quarters({}, ("Nope",), "USD", anchor=None) == []
+
+
+# ── _ttm ─────────────────────────────────────────────────────────────────────
+
+
+def test_ttm_sums_the_trailing_four():
+    pts = [("a", 1), ("b", 2), ("c", 3), ("d", 4), ("e", 5)]
+    assert _ttm(pts) == 14  # 2+3+4+5, the trailing four
+
+
+def test_ttm_offset_steps_back_a_full_year():
+    # eight quarters; offset=1 is the four ending one year before the newest
+    pts = [(str(i), i) for i in range(1, 9)]  # values 1..8
+    assert _ttm(pts) == 26  # 5+6+7+8
+    assert _ttm(pts, offset=1) == 10  # 1+2+3+4
+
+
+def test_ttm_none_when_fewer_than_four_quarters():
+    assert _ttm([("a", 1), ("b", 2)]) is None
+
+
+def test_ttm_none_when_offset_reaches_past_history():
+    pts = [("a", 1), ("b", 2), ("c", 3), ("d", 4)]
+    assert _ttm(pts, offset=1) is None
+
+
+# ── _instant_at / _quarter_at ────────────────────────────────────────────────
+
+
+def test_instant_takes_the_value_on_or_before_each_end():
+    facts = _facts(
+        Assets=[
+            inst("2025-03-31", 100),
+            inst("2025-06-30", 110),
+            inst("2025-09-30", 120),
+        ]
+    )
+    assert _instant_at(facts, ("Assets",), "USD", ["2025-06-30", "2025-03-31"]) == [
+        110,
+        100,
+    ]
+
+
+def test_instant_uses_nearest_earlier_when_no_exact_match():
+    facts = _facts(Assets=[inst("2025-03-31", 100)])
+    assert _instant_at(facts, ("Assets",), "USD", ["2025-05-01"]) == [100]
+
+
+def test_instant_none_before_first_balance_sheet():
+    facts = _facts(Assets=[inst("2025-06-30", 100)])
+    assert _instant_at(facts, ("Assets",), "USD", ["2025-03-31"]) == [None]
+
+
+def test_quarter_at_reads_single_quarter_values():
+    pts = [("2024-12-31", 40), ("2025-03-31", 11)]
+    assert _quarter_at(pts, ["2025-03-31", "2024-12-31"]) == [11, 40]
+
+
+# ── _annual (cycle-positioning view) ─────────────────────────────────────────
+
+
+def test_annual_prefers_the_tag_with_the_most_recent_year():
+    facts = _facts(
+        Stale=[dur("2021-01-01", "2021-12-31", 20, form="10-K")],
+        Current=[
+            dur("2024-01-01", "2024-12-31", 130, form="10-K"),
+            dur("2025-01-01", "2025-12-31", 216, form="10-K"),
         ],
     )
-    got = _series(facts, ("StaleTag", "CurrentTag"), "USD", True, [2025, 2024])
-    assert got == {2025: 11, 2024: 12}
-
-
-def test_series_returns_empty_when_no_tag_covers_the_years():
-    """Berkshire stopped tagging EPS after 2013; a decade-old series is worse
-    than nothing, because downstream code cannot tell it is stale."""
-    facts = _facts(OnlyOld=[fact(5, start="2013-01-01", end="2013-12-31", fy=2013)])
-    assert _series(facts, ("OnlyOld",), "USD", True, [2025, 2024]) == {}
-
-
-def test_series_breaks_coverage_ties_by_tag_order():
-    facts = _facts(
-        First=[fact(1, start="2025-01-01", end="2025-12-31")],
-        Second=[fact(2, start="2025-01-01", end="2025-12-31")],
-    )
-    assert _series(facts, ("First", "Second"), "USD", True, [2025]) == {2025: 1}
-
-
-def test_series_never_merges_tags():
-    """A leverage trend built from two definitions is worse than no trend."""
-    facts = _facts(
-        TagA=[fact(1, start="2025-01-01", end="2025-12-31")],
-        TagB=[fact(2, start="2024-01-01", end="2024-12-31", fy=2024)],
-    )
-    got = _series(facts, ("TagA", "TagB"), "USD", True, [2025, 2024])
-    assert got in ({2025: 1}, {2024: 2})
-    assert len(got) == 1
-
-
-def test_series_without_periods_prefers_the_most_recent_tag():
-    facts = _facts(
-        Old=[fact(1, start="2020-01-01", end="2020-12-31", fy=2020)],
-        New=[fact(2, start="2025-01-01", end="2025-12-31")],
-    )
-    assert _series(facts, ("Old", "New"), "USD", True) == {2025: 2}
-
-
-def test_series_handles_a_missing_tag():
-    assert _series({}, ("Nope",), "USD", True, [2025]) == {}
-
-
-# ── _align / _difference ──────────────────────────────────────────────────────
-
-
-def test_align_fills_gaps_with_none():
-    assert _align({2025: 10, 2023: 30}, [2025, 2024, 2023]) == [10, None, 30]
-
-
-def test_align_follows_period_order():
-    assert _align({2023: 1, 2025: 3}, [2023, 2025]) == [1, 3]
+    assert _annual(facts, ("Stale", "Current"), "USD") == [216, 130]
 
 
 @pytest.mark.parametrize(
@@ -164,13 +197,13 @@ def test_difference(a, b, expected):
     assert _difference(a, b) == expected
 
 
-# ── Scores ───────────────────────────────────────────────────────────────────
+# ── Scores, on the TTM shape ─────────────────────────────────────────────────
 
 
 def strong() -> dict:
-    """Every Piotroski signal passing, with round numbers."""
+    """Every Piotroski signal passing, round numbers, TTM-shaped."""
     return {
-        "periods": [2025, 2024],
+        "periods": ["2026-06-30", "2025-06-30"],
         "net_income": [100, 50],
         "assets": [1000, 800],
         "operating_cash_flow": [200, 120],
@@ -186,11 +219,11 @@ def strong() -> dict:
     }
 
 
-def test_piotroski_all_nine_signals_pass():
+def test_piotroski_all_nine_pass():
     assert piotroski_score(strong()) == 9
 
 
-def test_piotroski_counts_failing_signals():
+def test_piotroski_counts_failures():
     data = strong()
     data["current_assets"] = [300, 400]  # liquidity worsened
     data["diluted_shares"] = [60, 50]  # shares issued
@@ -199,46 +232,41 @@ def test_piotroski_counts_failing_signals():
 
 def test_piotroski_needs_two_periods():
     data = strong()
-    data["periods"] = [2025]
+    data["periods"] = ["2026-06-30"]
     assert piotroski_score(data) is None
 
 
-def test_piotroski_returns_none_when_a_signal_has_no_input():
-    """Berkshire has no gross profit line, so the score is not comparable."""
+def test_piotroski_none_when_a_signal_has_no_input():
+    """Berkshire has no gross-profit line, so the score is not comparable."""
     data = strong()
     data["gross_profit"] = [None, None]
     assert piotroski_score(data) is None
 
 
-def test_piotroski_returns_none_on_empty_data():
+def test_piotroski_none_on_empty():
     assert piotroski_score({}) is None
 
 
 def test_piotroski_survives_a_json_round_trip():
-    """The payload is cached as JSON. Year-keyed dicts did not survive that."""
-    data = json.loads(json.dumps(strong()))
-    assert piotroski_score(data) == 9
+    """The payload is cached as JSON; year-keyed dicts did not survive that."""
+    assert piotroski_score(json.loads(json.dumps(strong()))) == 9
 
 
-def test_altman_z_matches_the_formula():
+def test_altman_matches_the_formula():
     # 1.2(.3) + 1.4(.3) + 3.3(.16) + 0.6(2400/400) + 1.0(.9)
     assert altman_z(strong(), market_cap=2400) == pytest.approx(5.81, abs=0.01)
 
 
-def test_altman_z_needs_a_market_cap():
+def test_altman_needs_market_cap():
     assert altman_z(strong(), market_cap=None) is None
 
 
-def test_altman_z_returns_none_without_a_classified_balance_sheet():
+def test_altman_none_without_a_classified_balance_sheet():
     data = strong()
     data["current_assets"] = [None, None]
     assert altman_z(data, market_cap=2400) is None
 
 
-def test_altman_z_returns_none_on_empty_data():
-    assert altman_z({}, market_cap=2400) is None
-
-
-def test_altman_z_survives_a_json_round_trip():
+def test_altman_survives_a_json_round_trip():
     data = json.loads(json.dumps(strong()))
     assert altman_z(data, market_cap=2400) == pytest.approx(5.81, abs=0.01)

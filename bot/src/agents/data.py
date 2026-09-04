@@ -78,9 +78,11 @@ async def data_agent(state: AnalysisState) -> dict:
         ) = values
 
         # FMP's free tier answers 402 for most symbols; the OpenD snapshot covers
-        # every holding, at up to 5 minutes of staleness. Prefer FMP when it has
-        # something (it is real-time) and fall back to OpenD otherwise.
-        quote = quote or opend_quote
+        # every holding, at up to 5 minutes of staleness, and carries fields FMP's
+        # quote lacks (TTM PE, P/B, book value). Layer FMP's real-time fields on
+        # top so both survive; a non-held /decide ticker has no snapshot and keeps
+        # FMP alone.
+        quote = {**opend_quote, **{k: v for k, v in quote.items() if v is not None}}
 
         return {
             "raw_data": {

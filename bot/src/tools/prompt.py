@@ -83,17 +83,16 @@ Unrealized:   {f'{pnl:+g}%' if pnl is not None else 'unknown'}
 Piotroski F-Score: {piotroski}/9  (≥7 strong, ≤2 weak)
 Altman Z-Score:    {altman_z}     (>2.99 safe, <1.81 distress)
 
-## Valuation
+## Valuation (trailing twelve months)
 PE Ratio:   {valuation.get('pe_ratio', 'N/A')}
-PE (TTM):   {valuation.get('pe_ttm_ratio', 'N/A')}
 P/B Ratio:  {valuation.get('pb_ratio', 'N/A')}
 EV/EBITDA:  {valuation.get('ev_to_ebitda', 'N/A')}
 EV/Sales:   {valuation.get('ev_to_sales', 'N/A')}
 
-## Growth (YoY)
+## Growth (TTM vs prior-year TTM)
 Revenue growth: {growth.get('revenue_growth_pct', 'N/A')}%
 EPS growth:     {growth.get('eps_growth_pct', 'N/A')}%
-Latest EPS:     {growth.get('latest_eps', 'N/A')}
+TTM EPS:        {growth.get('latest_eps', 'N/A')}
 
 ## Quality
 ROE:              {quality.get('return_on_equity', 'N/A')}
