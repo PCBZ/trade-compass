@@ -7,12 +7,18 @@ concise, information-dense prompt for the LLM.
 from typing import Any
 
 
+def _num(value: Any) -> str:
+    """Render a metric for the prompt, trimming float noise."""
+    return "N/A" if value is None else f"{value:g}"
+
+
 def build_decision_prompt(
     ticker: str,
     profile: dict[str, Any],
     fundamental: dict[str, Any],
     sentiment: dict[str, Any],
     preferences: dict[str, Any],
+    position: dict[str, Any] | None = None,
 ) -> str:
     f = fundamental
     s = sentiment
@@ -47,6 +53,20 @@ def build_decision_prompt(
         if is_etf
         else ""
     )
+
+    position_section = ""
+    if position:
+        cap_pct = preferences.get("max_position_size", 0.1) * 100
+        cost = position.get("avg_cost")
+        weight = position.get("weight_pct")
+        pnl = position.get("unrealized_pct")
+        position_section = f"""## Your Position
+Weight:       {f'{weight:g}% of portfolio' if weight is not None else 'unknown'} (your cap: {cap_pct:.0f}%)
+Shares held:  {_num(position.get('qty'))}
+Cost basis:   {f'${cost:,.2f} per share' if cost else 'unknown'}
+Unrealized:   {f'{pnl:+g}%' if pnl is not None else 'unknown'}
+
+"""
 
     profile_note = (
         "\nNote: Company profile data was unavailable for this request, so sector "
@@ -97,7 +117,7 @@ Current price:     ${timing.get('current_price', 'N/A')}
 52w range:         ${timing.get('fifty_two_week_low', 'N/A')} – ${timing.get('fifty_two_week_high', 'N/A')}
 Position in range: {timing.get('position_in_52w_range', 'N/A')} (0=low, 1=high)
 
-## Recent News
+{position_section}## Recent News
 {headlines}
 
 ## User Preferences
@@ -107,6 +127,9 @@ Max position size: {preferences.get('max_position_size', 0.1) * 100:.0f}% of por
 
 ## Instructions
 Based on all available data, provide your investment verdict (BUY, HOLD, or SELL).
+When a position section is present the verdict is about an existing holding: BUY means
+add to it, SELL means reduce or exit. Weigh the position against the stated cap — a
+holding well above it may warrant trimming even on a constructive view.
 Use INSUFFICIENT_DATA ONLY if current price is unavailable and no news exists — not merely because fundamental metrics are missing.
 For ETFs or when fundamentals are absent, rely on price action, the 52-week range, and recent news.
 Consider sector-appropriate valuation benchmarks (e.g. high-growth tech warrants higher multiples).
