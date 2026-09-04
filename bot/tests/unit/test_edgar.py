@@ -16,10 +16,10 @@ from src.tools.edgar import (
     _difference,
     _instant_at,
     _kind,
-    _quarter_at,
     _quarters,
+    _shares_at,
     _single_quarters,
-    _ttm,
+    _ttm_asof,
     altman_z,
     piotroski_score,
 )
@@ -65,6 +65,21 @@ def test_derives_the_unreported_q4_from_the_annual():
         ("2024-06-30", 20),
         ("2024-09-30", 30),
         ("2024-12-31", 40),  # 100 − (10+20+30)
+    ]
+
+
+def test_decomposes_ytd_cumulative_filings():
+    """Cash-flow lines are filed year-to-date, not as discrete quarters, so a
+    quarter is the difference between consecutive cumulatives-from-fy-start."""
+    entries = [
+        dur("2025-01-01", "2025-03-31", 30),  # Q1  (3-month)
+        dur("2025-01-01", "2025-06-30", 70),  # H1  (6-month cumulative)
+        dur("2025-01-01", "2025-09-30", 120),  # 9-month cumulative
+    ]
+    assert _single_quarters(entries) == [
+        ("2025-03-31", 30),
+        ("2025-06-30", 40),  # 70 − 30
+        ("2025-09-30", 50),  # 120 − 70
     ]
 
 
@@ -123,28 +138,30 @@ def test_quarters_empty_when_tag_missing():
 # ── _ttm ─────────────────────────────────────────────────────────────────────
 
 
-def test_ttm_sums_the_trailing_four():
-    pts = [("a", 1), ("b", 2), ("c", 3), ("d", 4), ("e", 5)]
-    assert _ttm(pts) == 14  # 2+3+4+5, the trailing four
+def test_ttm_asof_sums_the_four_ending_on_the_target():
+    pts = [
+        ("2025-03-31", 1),
+        ("2025-06-30", 2),
+        ("2025-09-30", 3),
+        ("2025-12-31", 4),
+        ("2026-03-31", 5),
+    ]
+    assert _ttm_asof(pts, "2026-03-31") == 14  # 2+3+4+5
+    assert _ttm_asof(pts, "2025-12-31") == 10  # 1+2+3+4, one quarter back
 
 
-def test_ttm_offset_steps_back_a_full_year():
-    # eight quarters; offset=1 is the four ending one year before the newest
-    pts = [(str(i), i) for i in range(1, 9)]  # values 1..8
-    assert _ttm(pts) == 26  # 5+6+7+8
-    assert _ttm(pts, offset=1) == 10  # 1+2+3+4
+def test_ttm_asof_ignores_quarters_after_the_target():
+    """A line ahead of the anchor must not leak a future quarter in."""
+    pts = [(f"2025-{m:02d}-28", i) for i, m in enumerate((3, 6, 9, 12), 1)]
+    pts.append(("2026-03-31", 99))
+    assert _ttm_asof(pts, "2025-12-28") == 10  # 1+2+3+4, the 99 excluded
 
 
-def test_ttm_none_when_fewer_than_four_quarters():
-    assert _ttm([("a", 1), ("b", 2)]) is None
+def test_ttm_asof_none_when_fewer_than_four():
+    assert _ttm_asof([("2025-03-31", 1), ("2025-06-30", 2)], "2025-06-30") is None
 
 
-def test_ttm_none_when_offset_reaches_past_history():
-    pts = [("a", 1), ("b", 2), ("c", 3), ("d", 4)]
-    assert _ttm(pts, offset=1) is None
-
-
-# ── _instant_at / _quarter_at ────────────────────────────────────────────────
+# ── _instant_at / _shares_at ─────────────────────────────────────────────────
 
 
 def test_instant_takes_the_value_on_or_before_each_end():
@@ -155,25 +172,57 @@ def test_instant_takes_the_value_on_or_before_each_end():
             inst("2025-09-30", 120),
         ]
     )
-    assert _instant_at(facts, ("Assets",), "USD", ["2025-06-30", "2025-03-31"]) == [
-        110,
-        100,
-    ]
+    got = _instant_at(
+        facts, ("Assets",), "USD", ["2025-06-30", "2025-03-31"], "2025-09-30"
+    )
+    assert got == [110, 100]
 
 
 def test_instant_uses_nearest_earlier_when_no_exact_match():
     facts = _facts(Assets=[inst("2025-03-31", 100)])
-    assert _instant_at(facts, ("Assets",), "USD", ["2025-05-01"]) == [100]
+    assert _instant_at(facts, ("Assets",), "USD", ["2025-05-01"], "2025-05-01") == [100]
 
 
 def test_instant_none_before_first_balance_sheet():
     facts = _facts(Assets=[inst("2025-06-30", 100)])
-    assert _instant_at(facts, ("Assets",), "USD", ["2025-03-31"]) == [None]
+    got = _instant_at(facts, ("Assets",), "USD", ["2025-03-31"], "2025-06-30")
+    assert got == [None]
 
 
-def test_quarter_at_reads_single_quarter_values():
-    pts = [("2024-12-31", 40), ("2025-03-31", 11)]
-    assert _quarter_at(pts, ["2025-03-31", "2024-12-31"]) == [11, 40]
+def test_instant_prefers_the_tag_with_the_most_recent_balance_sheet():
+    """Both tags are current, so recency alone decides — not tuple order. The
+    first-with-any-data rule (the old bug) would return the earlier one."""
+    facts = _facts(
+        Earlier=[inst("2026-03-31", 9)],
+        Later=[inst("2026-03-31", 9), inst("2026-06-30", 2)],
+    )
+    got = _instant_at(facts, ("Earlier", "Later"), "USD", ["2026-06-30"], "2026-06-30")
+    assert got == [2]  # Later wins on recency though Earlier comes first
+
+
+def test_instant_rejects_a_tag_stale_against_the_anchor():
+    facts = _facts(LongTermDebt=[inst("2021-12-31", 5)])
+    got = _instant_at(facts, ("LongTermDebt",), "USD", ["2026-06-30"], "2026-06-30")
+    assert got == [None]
+
+
+def test_shares_reads_discrete_quarters_directly():
+    """A weighted average is read from the discrete quarter, never differenced
+    or summed: the 6-month cumulative alongside must be ignored."""
+    facts = {
+        "WeightedAverageNumberOfDilutedSharesOutstanding": {
+            "units": {
+                "shares": [
+                    dur("2026-01-01", "2026-03-31", 1120e6),  # Q1 discrete
+                    dur("2026-04-01", "2026-06-30", 1140e6),  # Q2 discrete
+                    dur("2026-01-01", "2026-06-30", 2260e6),  # 6-month cumulative
+                ]
+            }
+        }
+    }
+    tags = ("WeightedAverageNumberOfDilutedSharesOutstanding",)
+    got = _shares_at(facts, tags, ["2026-06-30", "2026-03-31"], "2026-06-30")
+    assert got == [1140e6, 1120e6]  # discrete values, not 2260 and not a diff
 
 
 # ── _annual (cycle-positioning view) ─────────────────────────────────────────

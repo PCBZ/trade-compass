@@ -17,6 +17,7 @@ figures and are computed here, now on the TTM / latest-balance-sheet basis.
 
 import logging
 import os
+from collections import defaultdict
 from datetime import date, timedelta
 from typing import Any
 
@@ -129,27 +130,47 @@ def _dedup(entries: list[dict]) -> list[dict]:
     return list(seen.values())
 
 
+def _days(start: str, end: str) -> int:
+    return (date.fromisoformat(end) - date.fromisoformat(start)).days
+
+
 def _single_quarters(entries: list[dict]) -> list[tuple[str, float]]:
     """(period-end, value) per fiscal quarter, oldest first.
 
-    Most issuers file only three 10-Qs a year; Q4 is folded into the 10-K. It is
-    recovered as annual minus the three quarters inside that fiscal year, so a
-    naive "last four 10-Qs" does not silently drop a quarter.
+    Two filing styles have to be reconciled. Income-statement lines are usually
+    reported as discrete quarters, but Q4 is folded into the 10-K and recovered
+    as annual minus the three inside. Cash-flow lines are reported year-to-date
+    cumulative (3-, 6-, 9-, 12-month from the fiscal-year start), so a quarter is
+    the difference between consecutive cumulatives — without this, summing what
+    look like quarters adds four different years' Q1 into nonsense.
     """
     es = _dedup(entries)
-    quarters = {(e["start"], e["end"]): e["val"] for e in es if _kind(e) == "quarter"}
+    singles: dict[str, float] = {}
+
+    # Difference each fiscal-year ladder: facts sharing a start are cumulative
+    # from it, so consecutive ends differ by one quarter. A discrete quarter is
+    # its own singleton ladder and passes through unchanged.
+    by_start: dict[str, list[tuple[str, float]]] = defaultdict(list)
+    for e in es:
+        if "start" in e and _days(e["start"], e["end"]) >= 80:
+            by_start[e["start"]].append((e["end"], e["val"]))
+    for start, rows in by_start.items():
+        prev_end, prev_val = start, 0.0
+        for end, val in sorted(rows):
+            if 80 <= _days(prev_end, end) <= 100:
+                singles.setdefault(end, round(val - prev_val, 4))
+            prev_end, prev_val = end, val
+
+    # Discrete filers do not file Q4; recover it from the annual minus the three
+    # quarters inside its fiscal year.
     for a in (e for e in es if _kind(e) == "annual"):
-        inside = sorted(
-            (
-                (s, end, v)
-                for (s, end), v in quarters.items()
-                if a["start"] <= s and end <= a["end"]
-            ),
-            key=lambda x: x[1],
-        )
+        if a["end"] in singles:
+            continue
+        inside = sorted(end for end in singles if a["start"] < end < a["end"])
         if len(inside) == 3:
-            quarters[(inside[-1][1], a["end"])] = a["val"] - sum(v for *_, v in inside)
-    return sorted((end, v) for (_, end), v in quarters.items())
+            singles[a["end"]] = round(a["val"] - sum(singles[end] for end in inside), 4)
+
+    return sorted(singles.items())
 
 
 def _quarters(facts: dict, tags: tuple[str, ...], unit: str, anchor: str | None):
@@ -174,48 +195,84 @@ def _quarters(facts: dict, tags: tuple[str, ...], unit: str, anchor: str | None)
     return best
 
 
-def _ttm(pts: list[tuple[str, float]], offset: int = 0) -> float | None:
-    """Sum of the four quarters ending `offset` years (×4) before the newest."""
-    end = len(pts) - 1 - 4 * offset
-    if end < 3:
-        return None
-    return round(sum(v for _, v in pts[end - 3 : end + 1]), 4)
+def _ttm_asof(pts: list[tuple[str, float]], end: str) -> float | None:
+    """Sum of the four quarters ending on or before `end`.
 
-
-def _quarter_at(pts: list[tuple[str, float]], ends: list[str]) -> list[float | None]:
-    """The single-quarter value ending on each period end (not a TTM sum).
-
-    Used for share count, where the dilution signal wants this quarter versus
-    the year-ago quarter rather than a rolling total.
+    Anchored to a target date rather than each series' own newest quarter, so a
+    line that lags the revenue anchor by a filing lines up at the same index as
+    every other line rather than drifting a quarter out of sync.
     """
-    by_end = dict(pts)
-    return [by_end.get(e) for e in ends]
+    upto = [v for e, v in pts if e <= end]
+    return round(sum(upto[-4:]), 4) if len(upto) >= 4 else None
 
 
-def _instant_at(
-    facts: dict, tags: tuple[str, ...], unit: str, ends: list[str]
+def _shares_at(
+    facts: dict, tags: tuple[str, ...], ends: list[str], anchor: str
 ) -> list[float | None]:
-    """Balance-sheet value as of (nearest on or before) each period end.
+    """Weighted-average diluted shares as of (nearest on or before) each end.
 
-    A 10-Q balance sheet is newer than the 10-K's, so the latest filing wins
-    rather than defaulting to the annual one.
+    Read from the discrete quarterly facts directly, never decomposed: a
+    weighted average is not a flow, so differencing a 6-month figure by a
+    3-month one would be meaningless. Only the dilution signal needs it — this
+    quarter's count against the year-ago quarter's.
     """
     for tag in tags:
-        pts: dict[str, tuple[float, str]] = {}
-        for e in facts.get(tag, {}).get("units", {}).get(unit, []):
-            if "start" in e:
+        by_end: dict[str, tuple[float, str]] = {}
+        for e in facts.get(tag, {}).get("units", {}).get("shares", []):
+            if _kind(e) != "quarter":
                 continue
-            if e["end"] not in pts or e.get("filed", "") >= pts[e["end"]][1]:
-                pts[e["end"]] = (e["val"], e.get("filed", ""))
-        if not pts:
+            if e["end"] not in by_end or e.get("filed", "") >= by_end[e["end"]][1]:
+                by_end[e["end"]] = (e["val"], e.get("filed", ""))
+        if not by_end:
+            continue
+        latest = max(by_end)
+        if _days(latest, anchor) > _STALE_DAYS:
             continue
         out = []
         for end in ends:
-            candidates = [(d, v) for d, (v, _) in pts.items() if d <= end]
+            candidates = [(d, v) for d, (v, _) in by_end.items() if d <= end]
             out.append(max(candidates)[1] if candidates else None)
-        if any(v is not None for v in out):
-            return out
+        return out
     return [None] * len(ends)
+
+
+def _instant_series(facts: dict, tag: str, unit: str) -> dict[str, float]:
+    pts: dict[str, tuple[float, str]] = {}
+    for e in facts.get(tag, {}).get("units", {}).get(unit, []):
+        if "start" in e:
+            continue
+        if e["end"] not in pts or e.get("filed", "") >= pts[e["end"]][1]:
+            pts[e["end"]] = (e["val"], e.get("filed", ""))
+    return {end: v for end, (v, _) in pts.items()}
+
+
+def _instant_at(
+    facts: dict, tags: tuple[str, ...], unit: str, ends: list[str], anchor: str
+) -> list[float | None]:
+    """Balance-sheet value as of (nearest on or before) each period end.
+
+    Picks the candidate tag whose newest balance sheet is most recent, the same
+    way the quarterly path does. Taking the first tag with any data locks onto a
+    superseded definition: AMD tagged LongTermDebt until 2021 and moved to
+    LongTermDebtNoncurrent, so the first match returns a 2021 figure for a 2026
+    period. A tag stale against the anchor by more than _STALE_DAYS is rejected.
+    """
+    best: dict[str, float] = {}
+    best_end = ""
+    for tag in tags:
+        series = _instant_series(facts, tag, unit)
+        if not series:
+            continue
+        latest = max(series)
+        if _days(latest, anchor) > _STALE_DAYS:
+            continue
+        if latest > best_end:
+            best, best_end = series, latest
+    out = []
+    for end in ends:
+        candidates = [(d, v) for d, v in best.items() if d <= end]
+        out.append(max(candidates)[1] if candidates else None)
+    return out
 
 
 def _difference(a: float | None, b: float | None) -> float | None:
@@ -315,23 +372,29 @@ async def _load_fundamentals(
         log.info("%s: no quarterly revenue in XBRL facts", ticker)
         return {}
     anchor = rev_q[-1][0]
+    # Period ends step back a year at a time from the newest revenue quarter,
+    # each needing four quarters of history behind it to form a TTM window.
     ends = [
         rev_q[len(rev_q) - 1 - 4 * i][0]
         for i in range(periods)
         if len(rev_q) - 1 - 4 * i >= 3
     ]
+    if not ends:
+        # Fewer than four quarters filed (a very recent listing). Report nothing
+        # so it retries on the short empty TTL rather than caching a hollow
+        # payload for a week and masking the quarters as they arrive.
+        log.info("%s: fewer than four quarters of revenue", ticker)
+        return {}
 
     out: dict[str, Any] = {"cik": cik, "periods": ends}
     for name, tags in _DURATION_TAGS.items():
         pts = rev_q if name == "revenue" else _quarters(facts, tags, "USD", anchor)
-        out[name] = [_ttm(pts, i) for i in range(len(ends))]
+        out[name] = [_ttm_asof(pts, e) for e in ends]
     eps_q = _quarters(facts, _EPS_TAGS, "USD/shares", anchor)
-    out["diluted_eps"] = [_ttm(eps_q, i) for i in range(len(ends))]
-    out["diluted_shares"] = _quarter_at(
-        _quarters(facts, _SHARE_TAGS, "shares", anchor), ends
-    )
+    out["diluted_eps"] = [_ttm_asof(eps_q, e) for e in ends]
+    out["diluted_shares"] = _shares_at(facts, _SHARE_TAGS, ends, anchor)
     for name, tags in _INSTANT_TAGS.items():
-        out[name] = _instant_at(facts, tags, "USD", ends)
+        out[name] = _instant_at(facts, tags, "USD", ends, anchor)
 
     # AMD, among others, tags only assets and equity — never total liabilities.
     out["liabilities"] = [
