@@ -76,10 +76,10 @@ async def test_get_preferences():
 
 
 @pytest.mark.asyncio
-async def test_get_decisions():
-    """GET /decisions returns a list."""
+async def test_get_quotes():
+    """GET /quotes returns the OpenD snapshot the sync script pushes."""
     async with httpx.AsyncClient() as client:
-        resp = await client.get(f"{API_URL}/decisions", headers=HEADERS, timeout=30)
-    print(f"\n  status: {resp.status_code}")
+        resp = await client.get(f"{API_URL}/quotes", headers=HEADERS, timeout=30)
+    print(f"\n  status: {resp.status_code}, count: {len(resp.json())}")
     assert resp.status_code == 200
     assert isinstance(resp.json(), list)

@@ -14,9 +14,9 @@ from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
 
-from bot.config import get_llm_models, get_default_model_id  # noqa: E402
-from bot.tools.llm import get_llm  # noqa: E402
-from bot.agents.decision import DecisionOutput  # noqa: E402
+from src.config import get_llm_models, get_default_model_id  # noqa: E402
+from src.tools.llm import get_llm  # noqa: E402
+from src.agents.decision import DecisionOutput  # noqa: E402
 
 
 @pytest.mark.asyncio
