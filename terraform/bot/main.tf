@@ -47,7 +47,7 @@ resource "null_resource" "build_push" {
   }
 
   provisioner "local-exec" {
-    command = "gcloud builds submit ${path.root}/../../bot --tag ${local.image} --project ${var.gcp_project_id}"
+    command = "gcloud builds submit ${path.root}/../../bot --tag ${local.image} --project ${var.gcp_project_id} --suppress-logs"
   }
 }
 
