@@ -1,15 +1,23 @@
-"""Annual financials from SEC EDGAR's XBRL company facts.
+"""Trailing-twelve-month financials from SEC EDGAR's XBRL company facts.
 
 FMP's free tier answers 402 for most of the portfolio, so income statement and
 balance sheet data comes straight from the filings instead. EDGAR is free, needs
 no key, and has no daily cap — it only asks for a declared User-Agent.
 
-Piotroski F-Score and Altman Z-Score used to arrive pre-computed from FMP. They
-are deterministic formulas over these same figures, so they are computed here.
+Everything is reported on a trailing-twelve-month basis, not annual: price moves
+daily while a 10-K is up to a year old, and for a cyclical name mid-swing the
+annual figure inverts the conclusion (MU's latest single quarter has exceeded
+its whole prior fiscal year). Quarterly filings are decomposed into single
+quarters — deriving the unreported Q4 from the annual minus the three 10-Qs —
+and summed over the trailing four. Validated against OpenD's pe_ttm to <0.5%.
+
+Piotroski F-Score and Altman Z-Score are deterministic formulas over these
+figures and are computed here, now on the TTM / latest-balance-sheet basis.
 """
 
 import logging
 import os
+from collections import defaultdict
 from datetime import date, timedelta
 from typing import Any
 
@@ -26,15 +34,21 @@ _FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
 # or a browser string is not enough. Supplied via env so it stays out of git.
 _CONTACT = os.environ.get("SEC_CONTACT", "")
 
-# A fiscal year that a filing labels FY can span slightly more or less than 365
-# days (52/53-week retail calendars, leap years).
+# A fiscal period a filing labels annual spans slightly more or less than 365
+# days (52/53-week retail calendars, leap years); a quarter is roughly 91.
 _YEAR_DAYS = range(350, 381)
+_QUARTER_DAYS = range(80, 101)
+
+# A candidate tag whose newest quarter lags the revenue anchor by more than this
+# is a defunct tag, not current data: NVDA moved revenue to `Revenues` in 2020
+# but the old tag lingers, and Berkshire stopped tagging EPS in 2013.
+_STALE_DAYS = 200
 
 # Statements change once a quarter at most, and the ticker file almost never.
 # Both fetches are heavy (800KB and ~4MB), so caching them is not optional.
 # Bump whenever the shape of the returned dict changes: a cached payload in the
 # old shape reads as garbage rather than as a miss.
-_SCHEMA = "v2"
+_SCHEMA = "v4"
 _FACTS_TTL = timedelta(days=7)
 _CIK_TTL = timedelta(days=30)
 # A missing CIK or an ETF with no filings is worth remembering, but briefly —
@@ -42,7 +56,7 @@ _CIK_TTL = timedelta(days=30)
 _EMPTY_TTL = timedelta(days=1)
 
 # Candidate tags per line item, best first. Filers disagree on which to use and
-# switch over time, so the pick is by coverage, not by order alone.
+# switch over time, so the pick is by quarter recency, not order alone.
 _DURATION_TAGS = {
     "revenue": (
         "RevenueFromContractWithCustomerExcludingAssessedTax",
@@ -58,6 +72,13 @@ _DURATION_TAGS = {
     "ebit": ("OperatingIncomeLoss",),
     "gross_profit": ("GrossProfit",),
 }
+_EPS_TAGS = (
+    "EarningsPerShareDiluted",
+    "EarningsPerShareBasicAndDiluted",
+    "IncomeLossFromContinuingOperationsPerDilutedShare",
+    "EarningsPerShareBasic",
+)
+_SHARE_TAGS = ("WeightedAverageNumberOfDilutedSharesOutstanding",)
 _INSTANT_TAGS = {
     "assets": ("Assets",),
     "liabilities": ("Liabilities",),
@@ -75,13 +96,10 @@ _INSTANT_TAGS = {
         "LiabilitiesNoncurrent",
     ),
 }
-_SHARE_TAGS = ("WeightedAverageNumberOfDilutedSharesOutstanding",)
-_EPS_TAGS = (
-    "EarningsPerShareDiluted",
-    "EarningsPerShareBasicAndDiluted",
-    "IncomeLossFromContinuingOperationsPerDilutedShare",
-    "EarningsPerShareBasic",
-)
+
+# Annual series kept for a future cycle-positioning view (is today's TTM high or
+# low against this name's own multi-year range?). Not shown in the prompt.
+_ANNUAL_YEARS = 5
 
 
 def _headers() -> dict[str, str]:
@@ -91,76 +109,199 @@ def _headers() -> dict[str, str]:
     }
 
 
-def _pick(entries: list[dict], want_duration: bool) -> dict[int, float]:
-    """Collapse raw XBRL facts to one value per fiscal year, newest first.
+def _kind(entry: dict) -> str | None:
+    if "start" not in entry:
+        return "instant"
+    span = (date.fromisoformat(entry["end"]) - date.fromisoformat(entry["start"])).days
+    if span in _YEAR_DAYS:
+        return "annual"
+    if span in _QUARTER_DAYS:
+        return "quarter"
+    return None
 
-    A 10-K restates the two prior years alongside the current one, and all three
-    carry the filing's own `fy`, so keying on `fy` silently collapses them into
-    one. The period's own end date is the only reliable label. Where a period
-    appears in several filings, the most recently filed value wins.
-    """
-    best: dict[int, tuple[str, float]] = {}
+
+def _dedup(entries: list[dict]) -> list[dict]:
+    """One fact per period; where it was reported twice, the later filing wins."""
+    seen: dict[tuple, dict] = {}
     for e in entries:
-        if e.get("form") != "10-K":
-            continue
-        has_start = "start" in e
-        if has_start != want_duration:
-            continue
-        if want_duration:
-            span = (date.fromisoformat(e["end"]) - date.fromisoformat(e["start"])).days
-            if span not in _YEAR_DAYS:
-                continue
-        year = int(e["end"][:4])
-        filed = e.get("filed", "")
-        if year not in best or filed >= best[year][0]:
-            best[year] = (filed, e["val"])
-    return {y: v for y, (_, v) in sorted(best.items(), reverse=True)}
+        key = ("start" in e, e.get("start"), e["end"])
+        if key not in seen or e.get("filed", "") >= seen[key].get("filed", ""):
+            seen[key] = e
+    return list(seen.values())
 
 
-def _series(
-    facts: dict,
-    tags: tuple[str, ...],
-    unit: str,
-    want_duration: bool,
-    periods: list[int] | None = None,
-) -> dict[int, float]:
-    """Pick the one tag that best covers `periods` (or the most recent years).
+def _days(start: str, end: str) -> int:
+    return (date.fromisoformat(end) - date.fromisoformat(start)).days
 
-    Taking the first tag that has any data at all is wrong: Micron tagged
-    LongTermDebtNoncurrent until 2012 and LongTermDebt ever since, so the first
-    match returns a series that does not overlap the years being analysed.
 
-    Tags are never merged. A leverage trend assembled from two different
-    definitions is worse than reporting no trend.
+def _single_quarters(entries: list[dict]) -> list[tuple[str, float]]:
+    """(period-end, value) per fiscal quarter, oldest first.
+
+    Two filing styles have to be reconciled. Income-statement lines are usually
+    reported as discrete quarters, but Q4 is folded into the 10-K and recovered
+    as annual minus the three inside. Cash-flow lines are reported year-to-date
+    cumulative (3-, 6-, 9-, 12-month from the fiscal-year start), so a quarter is
+    the difference between consecutive cumulatives — without this, summing what
+    look like quarters adds four different years' Q1 into nonsense.
     """
-    best: dict[int, float] = {}
-    best_rank = (0, 1)
-    for i, tag in enumerate(tags):
-        series = _pick(facts.get(tag, {}).get("units", {}).get(unit, []), want_duration)
+    es = _dedup(entries)
+    singles: dict[str, float] = {}
+
+    # Difference each fiscal-year ladder: facts sharing a start are cumulative
+    # from it, so consecutive ends differ by one quarter. A discrete quarter is
+    # its own singleton ladder and passes through unchanged.
+    by_start: dict[str, list[tuple[str, float]]] = defaultdict(list)
+    for e in es:
+        if "start" in e and _days(e["start"], e["end"]) >= 80:
+            by_start[e["start"]].append((e["end"], e["val"]))
+    for start, rows in by_start.items():
+        prev_end, prev_val = start, 0.0
+        for end, val in sorted(rows):
+            if 80 <= _days(prev_end, end) <= 100:
+                singles.setdefault(end, round(val - prev_val, 4))
+            prev_end, prev_val = end, val
+
+    # Discrete filers do not file Q4; recover it from the annual minus the three
+    # quarters inside its fiscal year.
+    for a in (e for e in es if _kind(e) == "annual"):
+        if a["end"] in singles:
+            continue
+        inside = sorted(end for end in singles if a["start"] < end < a["end"])
+        if len(inside) == 3:
+            singles[a["end"]] = round(a["val"] - sum(singles[end] for end in inside), 4)
+
+    return sorted(singles.items())
+
+
+def _quarters(facts: dict, tags: tuple[str, ...], unit: str, anchor: str | None):
+    """Single quarters from whichever candidate tag reaches furthest forward.
+
+    A tag whose newest quarter lags `anchor` by more than _STALE_DAYS is a
+    defunct definition and rejected, so a superseded tag cannot supply values.
+    """
+    best: list[tuple[str, float]] = []
+    best_key = ("", 0)
+    for tag in tags:
+        pts = _single_quarters(facts.get(tag, {}).get("units", {}).get(unit, []))
+        if not pts:
+            continue
+        if anchor:
+            lag = (date.fromisoformat(anchor) - date.fromisoformat(pts[-1][0])).days
+            if lag > _STALE_DAYS:
+                continue
+        key = (pts[-1][0], len(pts))
+        if key > best_key:
+            best, best_key = pts, key
+    return best
+
+
+def _ttm_asof(pts: list[tuple[str, float]], end: str) -> float | None:
+    """Sum of the four quarters ending on or before `end`.
+
+    Anchored to a target date rather than each series' own newest quarter, so a
+    line that lags the revenue anchor by a filing lines up at the same index as
+    every other line rather than drifting a quarter out of sync.
+    """
+    upto = [v for e, v in pts if e <= end]
+    return round(sum(upto[-4:]), 4) if len(upto) >= 4 else None
+
+
+def _shares_at(
+    facts: dict, tags: tuple[str, ...], ends: list[str], anchor: str
+) -> list[float | None]:
+    """Weighted-average diluted shares as of (nearest on or before) each end.
+
+    Read from the discrete quarterly facts directly, never decomposed: a
+    weighted average is not a flow, so differencing a 6-month figure by a
+    3-month one would be meaningless. Only the dilution signal needs it — this
+    quarter's count against the year-ago quarter's.
+    """
+    for tag in tags:
+        by_end: dict[str, tuple[float, str]] = {}
+        for e in facts.get(tag, {}).get("units", {}).get("shares", []):
+            if _kind(e) != "quarter":
+                continue
+            if e["end"] not in by_end or e.get("filed", "") >= by_end[e["end"]][1]:
+                by_end[e["end"]] = (e["val"], e.get("filed", ""))
+        if not by_end:
+            continue
+        latest = max(by_end)
+        if _days(latest, anchor) > _STALE_DAYS:
+            continue
+        out = []
+        for end in ends:
+            candidates = [(d, v) for d, (v, _) in by_end.items() if d <= end]
+            out.append(max(candidates)[1] if candidates else None)
+        return out
+    return [None] * len(ends)
+
+
+def _instant_series(facts: dict, tag: str, unit: str) -> dict[str, float]:
+    pts: dict[str, tuple[float, str]] = {}
+    for e in facts.get(tag, {}).get("units", {}).get(unit, []):
+        if "start" in e:
+            continue
+        if e["end"] not in pts or e.get("filed", "") >= pts[e["end"]][1]:
+            pts[e["end"]] = (e["val"], e.get("filed", ""))
+    return {end: v for end, (v, _) in pts.items()}
+
+
+def _instant_at(
+    facts: dict, tags: tuple[str, ...], unit: str, ends: list[str], anchor: str
+) -> list[float | None]:
+    """Balance-sheet value as of (nearest on or before) each period end.
+
+    Picks the candidate tag whose newest balance sheet is most recent, the same
+    way the quarterly path does. Taking the first tag with any data locks onto a
+    superseded definition: AMD tagged LongTermDebt until 2021 and moved to
+    LongTermDebtNoncurrent, so the first match returns a 2021 figure for a 2026
+    period. A tag stale against the anchor by more than _STALE_DAYS is rejected.
+    """
+    best: dict[str, float] = {}
+    best_end = ""
+    for tag in tags:
+        series = _instant_series(facts, tag, unit)
         if not series:
             continue
-        covered = sum(1 for y in periods if y in series) if periods else max(series)
-        if not covered:
-            # Berkshire stopped tagging EPS after 2013; carrying a decade-old
-            # series forward would be worse than reporting nothing.
+        latest = max(series)
+        if _days(latest, anchor) > _STALE_DAYS:
             continue
-        if (covered, -i) > best_rank:
-            best, best_rank = series, (covered, -i)
-    return best
+        if latest > best_end:
+            best, best_end = series, latest
+    out = []
+    for end in ends:
+        candidates = [(d, v) for d, v in best.items() if d <= end]
+        out.append(max(candidates)[1] if candidates else None)
+    return out
 
 
 def _difference(a: float | None, b: float | None) -> float | None:
     return None if a is None or b is None else a - b
 
 
-def _align(series: dict[int, float], periods: list[int]) -> list[float | None]:
-    """Lay a year-keyed series out against `periods`, None where it has no value.
+def _annual(facts: dict, tags: tuple[str, ...], unit: str) -> list[float | None]:
+    """Reported annual values, newest first — for the cycle-positioning view.
 
-    Every field is exported as a list rather than a year-keyed dict because the
-    result is cached as JSON, and JSON object keys are strings — an int-keyed
-    dict silently comes back unusable, which reads as "no data" downstream.
+    Picks the tag whose newest annual is most recent, for the same reason the
+    quarterly path does: NVDA's older revenue tag lingers with data that stops
+    in 2022, and taking the first tag with any annual value returns that stale
+    series instead of the current one.
     """
-    return [series.get(y) for y in periods]
+    best: dict[int, float] = {}
+    best_latest = ""
+    for tag in tags:
+        years: dict[int, tuple[str, float]] = {}
+        for e in facts.get(tag, {}).get("units", {}).get(unit, []):
+            if _kind(e) != "annual":
+                continue
+            year = int(e["end"][:4])
+            if year not in years or e.get("filed", "") >= years[year][0]:
+                years[year] = (e.get("filed", ""), e["val"])
+        if years and max(years) > (int(best_latest) if best_latest else 0):
+            best = {y: v for y, (_, v) in years.items()}
+            best_latest = str(max(years))
+    ordered = sorted(best, reverse=True)[:_ANNUAL_YEARS]
+    return [best[y] for y in ordered]
 
 
 async def _resolve_cik(client: httpx.AsyncClient, ticker: str) -> str:
@@ -185,9 +326,9 @@ async def _resolve_cik(client: httpx.AsyncClient, ticker: str) -> str:
 
 
 async def fetch_fundamentals(
-    client: httpx.AsyncClient, ticker: str, years: int = 4
+    client: httpx.AsyncClient, ticker: str, periods: int = 4
 ) -> dict[str, Any]:
-    """Annual figures for `ticker`, newest first. Returns {} when unavailable.
+    """Trailing-twelve-month figures for `ticker`, newest first. {} if absent.
 
     ETFs and trusts file no financial statements, so {} is a normal answer.
     """
@@ -196,15 +337,15 @@ async def fetch_fundamentals(
         return {}
 
     return await cached(
-        f"edgar-facts:{_SCHEMA}:{ticker}:{years}",
+        f"edgar-facts:{_SCHEMA}:{ticker}:{periods}",
         _FACTS_TTL,
-        lambda: _load_fundamentals(client, ticker, years),
+        lambda: _load_fundamentals(client, ticker, periods),
         empty_ttl=_EMPTY_TTL,
     )
 
 
 async def _load_fundamentals(
-    client: httpx.AsyncClient, ticker: str, years: int
+    client: httpx.AsyncClient, ticker: str, periods: int
 ) -> dict[str, Any]:
     try:
         cik = await _resolve_cik(client, ticker)
@@ -223,24 +364,37 @@ async def _load_fundamentals(
         log.warning("%s: EDGAR fetch failed: %r", ticker, exc)
         return {}
 
-    # Revenue establishes which fiscal years are in play; every other line is
-    # then resolved against those years rather than in isolation.
-    revenue = _series(facts, _DURATION_TAGS["revenue"], "USD", True)
-    periods = sorted(revenue, reverse=True)[:years]
+    # Revenue sets the anchor: its newest quarter end is "now", and every other
+    # series is judged fresh or stale against it. The TTM windows step back a
+    # year at a time from there.
+    rev_q = _quarters(facts, _DURATION_TAGS["revenue"], "USD", None)
+    if not rev_q:
+        log.info("%s: no quarterly revenue in XBRL facts", ticker)
+        return {}
+    anchor = rev_q[-1][0]
+    # Period ends step back a year at a time from the newest revenue quarter,
+    # each needing four quarters of history behind it to form a TTM window.
+    ends = [
+        rev_q[len(rev_q) - 1 - 4 * i][0]
+        for i in range(periods)
+        if len(rev_q) - 1 - 4 * i >= 3
+    ]
+    if not ends:
+        # Fewer than four quarters filed (a very recent listing). Report nothing
+        # so it retries on the short empty TTL rather than caching a hollow
+        # payload for a week and masking the quarters as they arrive.
+        log.info("%s: fewer than four quarters of revenue", ticker)
+        return {}
 
-    out: dict[str, Any] = {"cik": cik, "periods": periods}
-    out["revenue"] = _align(revenue, periods)
+    out: dict[str, Any] = {"cik": cik, "periods": ends}
     for name, tags in _DURATION_TAGS.items():
-        if name != "revenue":
-            out[name] = _align(_series(facts, tags, "USD", True, periods), periods)
+        pts = rev_q if name == "revenue" else _quarters(facts, tags, "USD", anchor)
+        out[name] = [_ttm_asof(pts, e) for e in ends]
+    eps_q = _quarters(facts, _EPS_TAGS, "USD/shares", anchor)
+    out["diluted_eps"] = [_ttm_asof(eps_q, e) for e in ends]
+    out["diluted_shares"] = _shares_at(facts, _SHARE_TAGS, ends, anchor)
     for name, tags in _INSTANT_TAGS.items():
-        out[name] = _align(_series(facts, tags, "USD", False, periods), periods)
-    out["diluted_eps"] = _align(
-        _series(facts, _EPS_TAGS, "USD/shares", True, periods), periods
-    )
-    out["diluted_shares"] = _align(
-        _series(facts, _SHARE_TAGS, "shares", True, periods), periods
-    )
+        out[name] = _instant_at(facts, tags, "USD", ends, anchor)
 
     # AMD, among others, tags only assets and equity — never total liabilities.
     out["liabilities"] = [
@@ -250,11 +404,11 @@ async def _load_fundamentals(
         )
     ]
 
-    if not periods:
-        # A CIK with no annual filings yet — SpaceX listed in mid-2026. Report
-        # nothing so it is retried on the short empty TTL, not held for a week.
-        log.info("%s: no annual periods in XBRL facts", ticker)
-        return {}
+    # Reported annual series, kept for cycle positioning (not shown in prompt).
+    out["annual"] = {
+        "revenue": _annual(facts, _DURATION_TAGS["revenue"], "USD"),
+        "diluted_eps": _annual(facts, _EPS_TAGS, "USD/shares"),
+    }
     return out
 
 
@@ -269,7 +423,7 @@ def _pair(series: list[float | None] | None) -> tuple[float, float] | None:
 
 
 def piotroski_score(data: dict[str, Any]) -> int | None:
-    """The 9-signal F-Score. None unless every signal can be evaluated.
+    """The 9-signal F-Score on a TTM basis. None unless every signal evaluates.
 
     A partial score is not comparable to a full one, so it is not reported.
     """
@@ -324,7 +478,10 @@ def piotroski_score(data: dict[str, Any]) -> int | None:
 
 
 def altman_z(data: dict[str, Any], market_cap: float | None) -> float | None:
-    """Altman Z-Score for a listed manufacturer. Needs market cap from a quote."""
+    """Altman Z-Score for a listed manufacturer. Needs market cap from a quote.
+
+    Flows are TTM; the balance sheet is the latest filed.
+    """
     if not (data.get("periods") or []) or not market_cap:
         return None
 
