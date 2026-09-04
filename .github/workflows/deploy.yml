@@ -1,21 +1,5 @@
 name: Deploy
 
-# Continuous deployment for the two Cloud Run services. A merge to main that
-# touches api/ or bot/ runs `terraform apply` on that module — the same path
-# deploy.sh takes, so Terraform stays the single source of truth and the running
-# image is whatever its src_hash builds.
-#
-# Only these two modules run here. The VM (ForceNew startup script — a re-apply
-# recreates it and wipes OpenD's credentials and cron) and Atlas (stateful) are
-# left to deploy.sh by hand; nothing there moves because code merged.
-#
-# No test gate: CI (.github/workflows/ci.yml) already gates the pull request.
-#
-# Auth is Workload Identity Federation. Required repo config (see docs/DEPLOY.md):
-#   vars.GCP_PROJECT_ID  vars.WIF_PROVIDER  vars.WIF_SERVICE_ACCOUNT  vars.SEC_CONTACT
-#   secrets.TELEGRAM_BOT_TOKEN  secrets.TELEGRAM_CHAT_ID
-#   secrets.FMP_API_KEY  secrets.OPENROUTER_API_KEY
-
 on:
   push:
     branches: [main]
