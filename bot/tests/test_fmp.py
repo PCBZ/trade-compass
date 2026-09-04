@@ -103,7 +103,11 @@ async def test_news_filters_out_unrelated_coverage(client):
 async def test_fetch_fundamentals(client):
     data = await fetch_fundamentals(client, RESTRICTED_TICKER)
     print(f"\n  periods: {data.get('periods')} | revenue: {data.get('revenue')}")
-    assert data, "EDGAR returned nothing — is SEC_CONTACT set?"
+    assert data, (
+        "EDGAR returned nothing. fetch_fundamentals() answers {} when SEC_CONTACT "
+        "is unset, when the ticker has no CIK, when it has filed no XBRL facts, "
+        "and when the request fails — check the warning it logged."
+    )
     assert len(data["periods"]) >= 2
     assert data["revenue"][0]
 

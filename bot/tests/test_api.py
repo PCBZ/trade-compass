@@ -58,9 +58,13 @@ async def test_get_holdings():
     """GET /holdings returns a list."""
     async with httpx.AsyncClient() as client:
         resp = await client.get(f"{API_URL}/holdings", headers=HEADERS, timeout=30)
-    print(f"\n  status: {resp.status_code}  count: {len(resp.json())}")
+    # Status first: an error body is often not JSON, and parsing it here would
+    # bury the status code the failure is actually about.
+    print(f"\n  status: {resp.status_code}")
     assert resp.status_code == 200
-    assert isinstance(resp.json(), list)
+    data = resp.json()
+    print(f"  count: {len(data)}")
+    assert isinstance(data, list)
 
 
 @pytest.mark.asyncio
@@ -68,9 +72,10 @@ async def test_get_preferences():
     """GET /preferences returns expected fields."""
     async with httpx.AsyncClient() as client:
         resp = await client.get(f"{API_URL}/preferences", headers=HEADERS, timeout=30)
-    data = resp.json()
-    print(f"\n  status: {resp.status_code}  prefs: {data}")
+    print(f"\n  status: {resp.status_code}")
     assert resp.status_code == 200
+    data = resp.json()
+    print(f"  prefs: {data}")
     assert "risk_tolerance" in data
     assert "llm_model" in data
 
@@ -80,6 +85,8 @@ async def test_get_quotes():
     """GET /quotes returns the OpenD snapshot the sync script pushes."""
     async with httpx.AsyncClient() as client:
         resp = await client.get(f"{API_URL}/quotes", headers=HEADERS, timeout=30)
-    print(f"\n  status: {resp.status_code}, count: {len(resp.json())}")
+    print(f"\n  status: {resp.status_code}")
     assert resp.status_code == 200
-    assert isinstance(resp.json(), list)
+    data = resp.json()
+    print(f"  count: {len(data)}")
+    assert isinstance(data, list)
