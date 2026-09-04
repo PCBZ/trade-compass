@@ -214,6 +214,10 @@ Atlas cluster → API on Cloud Run → write `bot/.env` → VM again with the re
 `api_url` → bot on Cloud Run → register the Telegram webhook. Cloud Run URLs and the
 generated API key are printed at the end.
 
+This is a one-time provision. After it, merges to `main` that touch `api/` or
+`bot/` deploy themselves via GitHub Actions — see [`docs/DEPLOY.md`](docs/DEPLOY.md)
+for the CI/CD setup. The VM, Atlas, and the buckets stay with `deploy.sh` by hand.
+
 ### 3. Finish the VM by hand
 
 OpenD needs interactive credentials, so the VM bootstrap stops short of starting it:

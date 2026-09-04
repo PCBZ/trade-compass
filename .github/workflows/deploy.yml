@@ -1,0 +1,117 @@
+name: Deploy
+
+# Continuous deployment for the two Cloud Run services. Merges to main that touch
+# api/ or bot/ build a new image and roll it out. Everything else — the VM, Atlas,
+# the GCS buckets — stays with `terraform/deploy.sh` by hand: those are ForceNew or
+# stateful and must not move on a code merge.
+#
+# Auth is Workload Identity Federation (no long-lived key). Required repo config:
+#   vars.GCP_PROJECT_ID         e.g. trade-compass-495804
+#   vars.WIF_PROVIDER           projects/N/locations/global/workloadIdentityPools/POOL/providers/PROVIDER
+#   vars.WIF_SERVICE_ACCOUNT    deployer SA email, granted run.admin + cloudbuild + AR write
+# See docs/DEPLOY.md for the one-time GCP setup.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "api/**"
+      - "bot/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch: # deploy current main by hand from the Actions tab
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGION: us-west1
+  REPO: trade-compass
+
+jobs:
+  # A merge should already be green from PR CI, but gate anyway: a bad main must
+  # not reach production.
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - run: pip install -r api/requirements-dev.txt -r bot/requirements.txt
+      - run: ruff check api/src/ bot/src/ sync/src/
+      - run: ruff format --check api/src/ bot/src/ sync/src/
+      - run: cd api && pytest tests/ -q
+      - run: cd bot && pytest tests/unit -q
+
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      bot: ${{ steps.filter.outputs.bot }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            api:
+              - 'api/**'
+            bot:
+              - 'bot/**'
+
+  deploy-api:
+    name: Deploy api
+    needs: [test, changes]
+    if: needs.changes.outputs.api == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Build and push image
+        run: |
+          gcloud builds submit api \
+            --tag "$REGION-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/$REPO/api:${{ github.sha }}" \
+            --project "${{ vars.GCP_PROJECT_ID }}"
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy trade-compass-api \
+            --image "$REGION-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/$REPO/api:${{ github.sha }}" \
+            --region "$REGION" \
+            --project "${{ vars.GCP_PROJECT_ID }}"
+
+  deploy-bot:
+    name: Deploy bot
+    needs: [test, changes]
+    if: needs.changes.outputs.bot == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Build and push image
+        run: |
+          gcloud builds submit bot \
+            --tag "$REGION-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/$REPO/bot:${{ github.sha }}" \
+            --project "${{ vars.GCP_PROJECT_ID }}"
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy trade-compass-bot \
+            --image "$REGION-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/$REPO/bot:${{ github.sha }}" \
+            --region "$REGION" \
+            --project "${{ vars.GCP_PROJECT_ID }}"
