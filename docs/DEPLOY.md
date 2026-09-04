@@ -1,47 +1,52 @@
 # Deployment
 
 Infrastructure is provisioned once with `terraform/deploy.sh`. Application code
-ships continuously: a merge to `main` that touches `api/` or `bot/` builds a new
-image and rolls it out to Cloud Run via
-[`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml).
+then ships continuously: a merge to `main` that touches `api/` or `bot/` runs
+`terraform apply` on that module via
+[`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml), the same path
+`deploy.sh` takes.
 
-The split is deliberate. The pipeline only ever runs `gcloud run deploy` on the
-two services. The VM, Atlas, and the GCS buckets stay manual: the VM's startup
-script is ForceNew (a re-apply would recreate it and wipe OpenD's credentials and
-cron), and the database is stateful. Nothing there should move because code
-merged.
+The split is deliberate. The pipeline only applies the two Cloud Run modules
+(`terraform/cloud_run`, `terraform/bot`). The VM (`terraform/compute_engine`),
+Atlas, and the buckets stay manual: the VM's startup script is ForceNew — a
+re-apply recreates the instance and wipes OpenD's credentials and cron — and the
+database is stateful. Nothing there should move because code merged.
 
-Terraform still owns each Cloud Run service's configuration (env, secrets,
-scaling); it just ignores the running image (`ignore_changes` on
-`template[0].containers[0].image`), so the pipeline owns deploys and a later
-`terraform apply` will not revert them.
+Because it is Terraform rather than a bare `gcloud run deploy`, each apply
+reconciles the whole module — the Cloud Run service, its Secret Manager secrets,
+IAM bindings, and the runtime service account — not just the image. That keeps
+Terraform the single source of truth (no image drift), at the cost of a broader
+deployer role and the app secrets living in GitHub, below.
 
 ## One-time setup (Workload Identity Federation)
 
 The pipeline authenticates with WIF — no long-lived key. Run these once as a
-project owner. Substitute nothing; the values are this project's.
+project owner; the values are this project's.
 
 ```bash
 PROJECT=trade-compass-495804
 PROJECT_NUMBER=647831890952
 REPO=PCBZ/trade-compass
-REGION=us-west1
 
 # 1. A dedicated deployer service account
 gcloud iam service-accounts create gh-deployer \
-  --project "$PROJECT" \
-  --display-name "GitHub Actions deployer"
+  --project "$PROJECT" --display-name "GitHub Actions deployer"
 
 DEPLOYER="gh-deployer@${PROJECT}.iam.gserviceaccount.com"
 
-# 2. Roles it needs: build images, push them, deploy Cloud Run, act as the
-#    runtime service accounts, and stage build sources.
+# 2. Roles. Broad, because `terraform apply` reconciles the full module: Cloud
+#    Run, Secret Manager (it writes the secret versions from the passed vars),
+#    IAM bindings, the runtime service accounts, Artifact Registry, Cloud Build,
+#    and the Terraform state in GCS.
 for ROLE in \
   roles/run.admin \
+  roles/secretmanager.admin \
+  roles/artifactregistry.admin \
   roles/cloudbuild.builds.editor \
-  roles/artifactregistry.writer \
   roles/storage.admin \
-  roles/iam.serviceAccountUser
+  roles/iam.serviceAccountAdmin \
+  roles/iam.serviceAccountUser \
+  roles/resourcemanager.projectIamAdmin
 do
   gcloud projects add-iam-policy-binding "$PROJECT" \
     --member "serviceAccount:${DEPLOYER}" --role "$ROLE" --condition=None
@@ -69,21 +74,32 @@ gcloud iam service-accounts add-iam-policy-binding "$DEPLOYER" \
 
 ## Repository configuration
 
-Add these as **repository variables** (Settings → Secrets and variables →
-Actions → Variables). They are identifiers, not secrets — WIF's trust policy is
-what gates access, not their obscurity.
+Settings → Secrets and variables → Actions.
+
+**Variables** (identifiers, not sensitive — WIF's trust policy gates access):
 
 | Variable | Value |
 |----------|-------|
 | `GCP_PROJECT_ID` | `trade-compass-495804` |
 | `WIF_PROVIDER` | `projects/647831890952/locations/global/workloadIdentityPools/github/providers/github-actions` |
 | `WIF_SERVICE_ACCOUNT` | `gh-deployer@trade-compass-495804.iam.gserviceaccount.com` |
+| `SEC_CONTACT` | your contact email for SEC EDGAR |
+
+**Secrets** — the bot module writes these into Secret Manager on each apply, so
+the pipeline needs the values, exactly as `deploy.sh` reads them from `bot/.env`:
+
+| Secret | From |
+|--------|------|
+| `TELEGRAM_BOT_TOKEN` | BotFather |
+| `TELEGRAM_CHAT_ID` | your chat ID |
+| `FMP_API_KEY` | Financial Modeling Prep |
+| `OPENROUTER_API_KEY` | OpenRouter |
 
 ## What the pipeline does not cover
 
 - **First-time provisioning** and any infra change: `terraform/deploy.sh`.
-- **The sync script on the VM.** It is pulled from GCS at VM bootstrap and does
-  not auto-update; after changing `sync/`, upload it and refresh the VM by hand
-  (see the main README).
+- **The sync script on the VM.** Pulled from GCS at VM bootstrap; it does not
+  auto-update. After changing `sync/`, upload it and refresh the VM by hand (see
+  the main README).
 - **Rollback.** Cloud Run keeps revisions — roll back in the console or with
   `gcloud run services update-traffic trade-compass-bot --to-revisions REV=100`.

@@ -1,15 +1,20 @@
 name: Deploy
 
-# Continuous deployment for the two Cloud Run services. Merges to main that touch
-# api/ or bot/ build a new image and roll it out. Everything else — the VM, Atlas,
-# the GCS buckets — stays with `terraform/deploy.sh` by hand: those are ForceNew or
-# stateful and must not move on a code merge.
+# Continuous deployment for the two Cloud Run services. A merge to main that
+# touches api/ or bot/ runs `terraform apply` on that module — the same path
+# deploy.sh takes, so Terraform stays the single source of truth and the running
+# image is whatever its src_hash builds.
 #
-# Auth is Workload Identity Federation (no long-lived key). Required repo config:
-#   vars.GCP_PROJECT_ID         e.g. trade-compass-495804
-#   vars.WIF_PROVIDER           projects/N/locations/global/workloadIdentityPools/POOL/providers/PROVIDER
-#   vars.WIF_SERVICE_ACCOUNT    deployer SA email, granted run.admin + cloudbuild + AR write
-# See docs/DEPLOY.md for the one-time GCP setup.
+# Only these two modules run here. The VM (ForceNew startup script — a re-apply
+# recreates it and wipes OpenD's credentials and cron) and Atlas (stateful) are
+# left to deploy.sh by hand; nothing there moves because code merged.
+#
+# No test gate: CI (.github/workflows/ci.yml) already gates the pull request.
+#
+# Auth is Workload Identity Federation. Required repo config (see docs/DEPLOY.md):
+#   vars.GCP_PROJECT_ID  vars.WIF_PROVIDER  vars.WIF_SERVICE_ACCOUNT  vars.SEC_CONTACT
+#   secrets.TELEGRAM_BOT_TOKEN  secrets.TELEGRAM_CHAT_ID
+#   secrets.FMP_API_KEY  secrets.OPENROUTER_API_KEY
 
 on:
   push:
@@ -17,6 +22,8 @@ on:
     paths:
       - "api/**"
       - "bot/**"
+      - "terraform/cloud_run/**"
+      - "terraform/bot/**"
       - ".github/workflows/deploy.yml"
   workflow_dispatch: # deploy current main by hand from the Actions tab
 
@@ -24,27 +31,7 @@ concurrency:
   group: deploy-${{ github.ref }}
   cancel-in-progress: false
 
-env:
-  REGION: us-west1
-  REPO: trade-compass
-
 jobs:
-  # A merge should already be green from PR CI, but gate anyway: a bad main must
-  # not reach production.
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.14"
-      - run: pip install -r api/requirements-dev.txt -r bot/requirements.txt
-      - run: ruff check api/src/ bot/src/ sync/src/
-      - run: ruff format --check api/src/ bot/src/ sync/src/
-      - run: cd api && pytest tests/ -q
-      - run: cd bot && pytest tests/unit -q
-
   changes:
     name: Detect changes
     runs-on: ubuntu-latest
@@ -59,17 +46,22 @@ jobs:
           filters: |
             api:
               - 'api/**'
+              - 'terraform/cloud_run/**'
             bot:
               - 'bot/**'
+              - 'terraform/bot/**'
 
   deploy-api:
     name: Deploy api
-    needs: [test, changes]
+    needs: changes
     if: needs.changes.outputs.api == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
+    defaults:
+      run:
+        working-directory: terraform/cloud_run
     steps:
       - uses: actions/checkout@v4
       - uses: google-github-actions/auth@v2
@@ -77,26 +69,35 @@ jobs:
           workload_identity_provider: ${{ vars.WIF_PROVIDER }}
           service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v2
-      - name: Build and push image
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - name: Terraform apply
+        env:
+          BUCKET: trade-compass-tfstate-${{ vars.GCP_PROJECT_ID }}
         run: |
-          gcloud builds submit api \
-            --tag "$REGION-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/$REPO/api:${{ github.sha }}" \
-            --project "${{ vars.GCP_PROJECT_ID }}"
-      - name: Deploy to Cloud Run
-        run: |
-          gcloud run deploy trade-compass-api \
-            --image "$REGION-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/$REPO/api:${{ github.sha }}" \
-            --region "$REGION" \
-            --project "${{ vars.GCP_PROJECT_ID }}"
+          terraform init \
+            -backend-config="bucket=${BUCKET}" \
+            -backend-config="prefix=cloud_run"
+          terraform apply -auto-approve \
+            -var="gcp_project_id=${{ vars.GCP_PROJECT_ID }}" \
+            -var="tfstate_bucket=${BUCKET}"
 
   deploy-bot:
     name: Deploy bot
-    needs: [test, changes]
-    if: needs.changes.outputs.bot == 'true' || github.event_name == 'workflow_dispatch'
+    # After api: the bot module reads the api's Cloud Run URL from its remote
+    # state. A skipped api job still satisfies this.
+    needs: [changes, deploy-api]
+    if: |
+      always() && needs.deploy-api.result != 'failure' &&
+      (needs.changes.outputs.bot == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
+    defaults:
+      run:
+        working-directory: terraform/bot
     steps:
       - uses: actions/checkout@v4
       - uses: google-github-actions/auth@v2
@@ -104,14 +105,21 @@ jobs:
           workload_identity_provider: ${{ vars.WIF_PROVIDER }}
           service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v2
-      - name: Build and push image
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - name: Terraform apply
+        env:
+          BUCKET: trade-compass-tfstate-${{ vars.GCP_PROJECT_ID }}
         run: |
-          gcloud builds submit bot \
-            --tag "$REGION-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/$REPO/bot:${{ github.sha }}" \
-            --project "${{ vars.GCP_PROJECT_ID }}"
-      - name: Deploy to Cloud Run
-        run: |
-          gcloud run deploy trade-compass-bot \
-            --image "$REGION-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/$REPO/bot:${{ github.sha }}" \
-            --region "$REGION" \
-            --project "${{ vars.GCP_PROJECT_ID }}"
+          terraform init \
+            -backend-config="bucket=${BUCKET}" \
+            -backend-config="prefix=bot"
+          terraform apply -auto-approve \
+            -var="gcp_project_id=${{ vars.GCP_PROJECT_ID }}" \
+            -var="tfstate_bucket=${BUCKET}" \
+            -var="sec_contact=${{ vars.SEC_CONTACT }}" \
+            -var="telegram_bot_token=${{ secrets.TELEGRAM_BOT_TOKEN }}" \
+            -var="telegram_chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -var="fmp_api_key=${{ secrets.FMP_API_KEY }}" \
+            -var="openrouter_api_key=${{ secrets.OPENROUTER_API_KEY }}"

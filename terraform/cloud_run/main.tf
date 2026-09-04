@@ -195,13 +195,6 @@ resource "google_cloud_run_v2_service" "api" {
     }
   }
 
-  lifecycle {
-    # CI/CD deploys new images with `gcloud run deploy`, so the running image is
-    # owned by the pipeline, not this state. Without this, the next `terraform
-    # apply` would revert the service to the image its src_hash last built.
-    ignore_changes = [template[0].containers[0].image]
-  }
-
   depends_on = [
     null_resource.build_push,
     google_secret_manager_secret_iam_member.api_secret_access,
