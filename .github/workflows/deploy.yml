@@ -1,0 +1,109 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "api/**"
+      - "bot/**"
+      - "terraform/cloud_run/**"
+      - "terraform/bot/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch: # deploy current main by hand from the Actions tab
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      bot: ${{ steps.filter.outputs.bot }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            api:
+              - 'api/**'
+              - 'terraform/cloud_run/**'
+            bot:
+              - 'bot/**'
+              - 'terraform/bot/**'
+
+  deploy-api:
+    name: Deploy api
+    needs: changes
+    if: needs.changes.outputs.api == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: terraform/cloud_run
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - name: Terraform apply
+        env:
+          BUCKET: trade-compass-tfstate-${{ vars.GCP_PROJECT_ID }}
+        run: |
+          terraform init \
+            -backend-config="bucket=${BUCKET}" \
+            -backend-config="prefix=cloud_run"
+          terraform apply -auto-approve \
+            -var="gcp_project_id=${{ vars.GCP_PROJECT_ID }}" \
+            -var="tfstate_bucket=${BUCKET}"
+
+  deploy-bot:
+    name: Deploy bot
+    # After api: the bot module reads the api's Cloud Run URL from its remote
+    # state. A skipped api job still satisfies this.
+    needs: [changes, deploy-api]
+    if: |
+      always() && needs.deploy-api.result != 'failure' &&
+      (needs.changes.outputs.bot == 'true' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: terraform/bot
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - name: Terraform apply
+        env:
+          BUCKET: trade-compass-tfstate-${{ vars.GCP_PROJECT_ID }}
+        run: |
+          terraform init \
+            -backend-config="bucket=${BUCKET}" \
+            -backend-config="prefix=bot"
+          terraform apply -auto-approve \
+            -var="gcp_project_id=${{ vars.GCP_PROJECT_ID }}" \
+            -var="tfstate_bucket=${BUCKET}" \
+            -var="sec_contact=${{ vars.SEC_CONTACT }}" \
+            -var="telegram_bot_token=${{ secrets.TELEGRAM_BOT_TOKEN }}" \
+            -var="telegram_chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -var="fmp_api_key=${{ secrets.FMP_API_KEY }}" \
+            -var="openrouter_api_key=${{ secrets.OPENROUTER_API_KEY }}"
