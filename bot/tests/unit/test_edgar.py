@@ -161,6 +161,18 @@ def test_ttm_asof_none_when_fewer_than_four():
     assert _ttm_asof([("2025-03-31", 1), ("2025-06-30", 2)], "2025-06-30") is None
 
 
+def test_ttm_asof_none_when_a_quarter_is_missing():
+    """Four ends spanning far more than a year mean one quarter is absent, so
+    they are not a trailing twelve months."""
+    pts = [
+        ("2024-03-31", 1),
+        ("2024-06-30", 2),  # gap: 2024-09 and 2024-12 missing
+        ("2025-09-30", 3),
+        ("2025-12-31", 4),
+    ]
+    assert _ttm_asof(pts, "2025-12-31") is None
+
+
 # ── _instant_at / _shares_at ─────────────────────────────────────────────────
 
 

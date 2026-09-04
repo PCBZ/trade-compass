@@ -196,14 +196,23 @@ def _quarters(facts: dict, tags: tuple[str, ...], unit: str, anchor: str | None)
 
 
 def _ttm_asof(pts: list[tuple[str, float]], end: str) -> float | None:
-    """Sum of the four quarters ending on or before `end`.
+    """Sum of the four quarters ending on or before `end`, or None.
 
     Anchored to a target date rather than each series' own newest quarter, so a
     line that lags the revenue anchor by a filing lines up at the same index as
     every other line rather than drifting a quarter out of sync.
+
+    A None guards against a missing quarter: four consecutive quarter-ends span
+    about 270 days, so a wider window means one is absent and the four do not
+    make a trailing year — better no number than a plausible wrong one.
     """
-    upto = [v for e, v in pts if e <= end]
-    return round(sum(upto[-4:]), 4) if len(upto) >= 4 else None
+    upto = [(e, v) for e, v in pts if e <= end]
+    if len(upto) < 4:
+        return None
+    window = upto[-4:]
+    if _days(window[0][0], window[-1][0]) > 300:
+        return None
+    return round(sum(v for _, v in window), 4)
 
 
 def _shares_at(
