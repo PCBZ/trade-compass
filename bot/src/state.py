@@ -55,7 +55,7 @@ class AnalysisState(TypedDict):
     preferences: dict[str, Any]  # {style, horizon, risk}
 
     # ── Data layer ────────────────────────────────────────────────
-    raw_data: dict[str, Any]  # Yahoo Finance quote + financials + news
+    raw_data: dict[str, Any]  # FMP + EDGAR + Nasdaq RSS + OpenD snapshot
     holdings: list[Position]  # current Futu positions from REST API
 
     # ── Agent outputs ─────────────────────────────────────────────
