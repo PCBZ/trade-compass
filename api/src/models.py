@@ -17,6 +17,7 @@ class Holding(BaseModel):
                 "market_value": 1820.0,
                 "security_type": "STOCK",
                 "currency": "USD",
+                "account": "CASH",
                 "updated_at": "2026-05-09T10:00:00Z",
             }
         }
