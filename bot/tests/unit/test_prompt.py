@@ -10,7 +10,7 @@ before the prompt so the model saw the position cap without the position.
 
 from __future__ import annotations
 
-from src.tools.prompt import _num, build_decision_prompt
+from src.tools.prompt import _altman_line, _num, build_decision_prompt
 
 
 def _base(**over):
@@ -41,6 +41,54 @@ def test_num_renders_none_as_na():
 def test_num_trims_float_noise():
     assert _num(44.17) == "44.17"
     assert _num(18.0) == "18"
+
+
+# ── Altman Z rendering (saturates on low-debt large-caps) ─────────────────────
+
+
+def test_altman_line_renders_a_normal_value_with_bands():
+    line = _altman_line(5.81)
+    assert line.startswith("5.81")
+    assert "(>2.99 safe, <1.81 distress)" in line
+
+
+def test_altman_line_clamps_the_saturating_high_end():
+    """A low-debt large-cap posts Z in the 60s; the model must not see a 65."""
+    line = _altman_line(65.0)
+    assert "65" not in line
+    assert ">10" in line
+    assert "inflates on low debt" in line
+
+
+def test_altman_line_ceiling_is_inclusive():
+    # Exactly at the ceiling is a real, in-range value; only above it clamps.
+    assert _altman_line(10.0).startswith("10.0")
+    assert _altman_line(10.5).startswith(">10")
+
+
+def test_altman_line_renders_none_as_na_not_the_word_none():
+    line = _altman_line(None)
+    assert line.startswith("N/A")
+    assert "None" not in line
+
+
+def test_health_header_is_not_labeled_objective():
+    """The scores are rule-based; 'objective' oversold a saturating Z."""
+    p = build_decision_prompt(**_base())
+    assert "rule-based scores" in p
+    assert "objective scores" not in p
+
+
+def test_saturated_altman_is_clamped_in_the_full_prompt():
+    fundamental = {
+        "scores": {"piotroski": 8, "altman_z": 65.0},
+        "valuation": {},
+        "growth": {},
+        "quality": {},
+    }
+    p = build_decision_prompt(**_base(fundamental=fundamental))
+    assert "Altman Z-Score:    >10" in p
+    assert "65" not in p
 
 
 # ── stock vs ETF ────────────────────────────────────────────────────────────
