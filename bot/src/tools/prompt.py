@@ -12,6 +12,26 @@ def _num(value: Any) -> str:
     return "N/A" if value is None else f"{value:g}"
 
 
+# Altman's Z is calibrated to sort firms into distress / grey / safe bands. Its
+# X4 term, 0.6 * (market cap / total liabilities), is unbounded, so a low-debt
+# large-cap posts a Z of 60+. Past the safe line a bigger number is not "safer"
+# — it is just the market-cap ratio talking — so cap the *display*: a bare 65
+# would read to the model as an extraordinary signal and crowd out the rest of
+# the prompt, and invite bogus comparisons against a genuine 3.4 elsewhere. The
+# score itself (edgar.altman_z) stays a faithful implementation of the formula.
+_ALTMAN_SAFE_CEILING = 10.0
+_ALTMAN_BANDS = "(>2.99 safe, <1.81 distress)"
+
+
+def _altman_line(z: Any) -> str:
+    """Render the Altman Z value, clamping the saturating high end to a band."""
+    if z is None:
+        return f"N/A     {_ALTMAN_BANDS}"
+    if z > _ALTMAN_SAFE_CEILING:
+        return f">{_ALTMAN_SAFE_CEILING:g}     (safe zone; Z inflates on low debt)"
+    return f"{z}     {_ALTMAN_BANDS}"
+
+
 def build_decision_prompt(
     ticker: str,
     profile: dict[str, Any],
@@ -79,9 +99,9 @@ Unrealized:   {f'{pnl:+g}%' if pnl is not None else 'unknown'}
     fundamental_section = (
         ""
         if is_etf
-        else f"""## Financial Health (objective scores)
+        else f"""## Financial Health (rule-based scores)
 Piotroski F-Score: {piotroski}/9  (≥7 strong, ≤2 weak)
-Altman Z-Score:    {altman_z}     (>2.99 safe, <1.81 distress)
+Altman Z-Score:    {_altman_line(altman_z)}
 
 ## Valuation (trailing twelve months)
 PE Ratio:   {valuation.get('pe_ratio', 'N/A')}
