@@ -213,6 +213,11 @@ resource "google_cloud_run_v2_service" "bot" {
           memory = "1Gi"
           cpu    = "1"
         }
+
+        # Bill CPU only while a request is in flight. The provider defaults this
+        # to false — CPU always allocated — which bills the container's whole
+        # lifetime, including the idle stretches between scheduled pushes.
+        cpu_idle = true
       }
     }
   }

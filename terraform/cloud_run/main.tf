@@ -191,6 +191,11 @@ resource "google_cloud_run_v2_service" "api" {
           memory = "512Mi"
           cpu    = "1"
         }
+
+        # Bill CPU only while a request is in flight. The provider defaults this
+        # to false — CPU always allocated — which bills the container's whole
+        # lifetime, and the 5-minute holdings sync keeps it up all trading day.
+        cpu_idle = true
       }
     }
   }
