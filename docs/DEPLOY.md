@@ -1,8 +1,22 @@
 # Deployment
 
-`terraform/deploy.sh` provisions everything once. After that, merges to `main`
-touching `api/` or `bot/` run `terraform apply` on that Cloud Run module via
+`terraform/deploy.sh` provisions everything once. After that, pushing a `v*` tag
+runs `terraform apply` on both Cloud Run modules via
 [`deploy.yml`](../.github/workflows/deploy.yml). The VM and Atlas stay manual.
+
+## Releasing
+
+Merging to `main` does not deploy. Cut a release when you want one:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Both modules apply on every tag. That is cheap: each image is tagged with a hash
+of its source, so a component you did not touch rebuilds nothing and gets no new
+revision. To deploy without tagging, run the workflow by hand from the Actions
+tab.
 
 ## One-time WIF setup
 

@@ -2,43 +2,22 @@ name: Deploy
 
 on:
   push:
-    branches: [main]
-    paths:
-      - "api/**"
-      - "bot/**"
-      - "terraform/cloud_run/**"
-      - "terraform/bot/**"
-      - ".github/workflows/deploy.yml"
-  workflow_dispatch: # deploy current main by hand from the Actions tab
+    tags: ["v*"] # releasing is deliberate: `git tag v0.1.0 && git push origin v0.1.0`
+  workflow_dispatch: # deploy the current ref by hand from the Actions tab
 
+# One deploy at a time. Keyed on github.ref this would be per-tag, i.e. not
+# serialised at all — every tag targets the same project and tfstate.
 concurrency:
-  group: deploy-${{ github.ref }}
+  group: deploy
   cancel-in-progress: false
 
+# Both modules apply on every tag. There is no useful base to diff a tag
+# against, and filtering is only an optimisation here: the image is tagged
+# :${src_hash} and the build is triggered on that hash, so a component whose
+# source is unchanged rebuilds nothing and produces no new revision.
 jobs:
-  changes:
-    name: Detect changes
-    runs-on: ubuntu-latest
-    outputs:
-      api: ${{ steps.filter.outputs.api }}
-      bot: ${{ steps.filter.outputs.bot }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            api:
-              - 'api/**'
-              - 'terraform/cloud_run/**'
-            bot:
-              - 'bot/**'
-              - 'terraform/bot/**'
-
   deploy-api:
     name: Deploy api
-    needs: changes
-    if: needs.changes.outputs.api == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -69,12 +48,8 @@ jobs:
 
   deploy-bot:
     name: Deploy bot
-    # After api: the bot module reads the api's Cloud Run URL from its remote
-    # state. A skipped api job still satisfies this.
-    needs: [changes, deploy-api]
-    if: |
-      always() && needs.deploy-api.result != 'failure' &&
-      (needs.changes.outputs.bot == 'true' || github.event_name == 'workflow_dispatch')
+    # After api: the bot module reads the api's Cloud Run URL from its remote state.
+    needs: deploy-api
     runs-on: ubuntu-latest
     permissions:
       contents: read
