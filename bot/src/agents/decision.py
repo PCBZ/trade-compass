@@ -2,9 +2,14 @@
 
 Calls OpenRouter LLM with structured output (with_structured_output).
 Outputs a DecisionOutput written to state["decision"]. The verdict is delivered
-to Telegram and not persisted: nothing read the stored history back.
+to Telegram; each decision is also emitted as one structured JSON line, routed
+to BigQuery, to accumulate the (prompt, response) corpus that eval reads. The
+inputs are point-in-time and cannot be reconstructed later, hence capturing
+them as they happen.
 """
 
+import json
+from datetime import UTC, datetime
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -69,6 +74,35 @@ def _position(ticker: str, holdings: list[dict]) -> dict | None:
 # ── Agent ─────────────────────────────────────────────────────────────────────
 
 
+def _log_decision(ticker: str, prompt: str, response: dict) -> None:
+    """Emit one decision as a structured line for the eval corpus.
+
+    `print` rather than `logging`: Cloud Run turns a stdout line that is valid
+    JSON into a structured `jsonPayload`, which is what the BigQuery sink
+    filters on. A logging formatter would prefix the line and break that, and
+    the bot installs no handlers anyway, so `log.info` would be dropped at the
+    root logger's default WARNING level.
+
+    The corpus is worth nothing if capturing it can break a verdict, so any
+    failure here is swallowed.
+    """
+    try:
+        print(
+            json.dumps(
+                {
+                    "event_type": "decision",
+                    "ts": datetime.now(UTC).isoformat(),
+                    "ticker": ticker,
+                    "prompt": prompt,
+                    "response": response,
+                }
+            ),
+            flush=True,
+        )
+    except Exception:  # noqa: BLE001 — capture must never break the decision
+        pass
+
+
 async def decision_agent(state: AnalysisState) -> dict:
     """
     Builds a structured prompt from fundamental + sentiment analysis,
@@ -81,6 +115,10 @@ async def decision_agent(state: AnalysisState) -> dict:
     sentiment = state.get("sentiment_analysis", {})
     preferences = state.get("preferences", {})
     holdings = state.get("holdings") or []
+
+    # Defined up front so the failure path still logs something useful when it
+    # is build_decision_prompt itself that raised.
+    prompt = ""
 
     try:
         prompt = build_decision_prompt(
@@ -100,16 +138,17 @@ async def decision_agent(state: AnalysisState) -> dict:
             preferred=preferences.get("llm_model"),
         )
 
-        return {"decision": result.model_dump()}
+        decision = result.model_dump()
 
     except Exception as exc:
-        return {
-            "decision": {
-                "verdict": "INSUFFICIENT_DATA",
-                "confidence": "low",
-                "thesis": f"Analysis failed: {exc}",
-                "key_assumptions": [],
-                "stop_loss": None,
-                "target_price": None,
-            }
+        decision = {
+            "verdict": "INSUFFICIENT_DATA",
+            "confidence": "low",
+            "thesis": f"Analysis failed: {exc}",
+            "key_assumptions": [],
+            "stop_loss": None,
+            "target_price": None,
         }
+
+    _log_decision(ticker, prompt, decision)
+    return {"decision": decision}
