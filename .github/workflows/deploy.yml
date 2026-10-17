@@ -16,8 +16,41 @@ concurrency:
 # :${src_hash} and the build is triggered on that hash, so a component whose
 # source is unchanged rebuilds nothing and produces no new revision.
 jobs:
+  # Project APIs and the deployer's own roles. Runs first and alone: granting a
+  # role and using it in the same apply races IAM propagation, so the grant
+  # finishes a job early rather than seconds early.
+  bootstrap:
+    name: Bootstrap project
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: terraform/bootstrap
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - name: Terraform apply
+        env:
+          BUCKET: trade-compass-tfstate-${{ vars.GCP_PROJECT_ID }}
+        run: |
+          terraform init \
+            -backend-config="bucket=${BUCKET}" \
+            -backend-config="prefix=bootstrap"
+          terraform apply -auto-approve \
+            -var="gcp_project_id=${{ vars.GCP_PROJECT_ID }}"
+
   deploy-api:
     name: Deploy api
+    needs: bootstrap
     runs-on: ubuntu-latest
     permissions:
       contents: read

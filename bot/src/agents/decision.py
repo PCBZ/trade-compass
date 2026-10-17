@@ -2,7 +2,10 @@
 
 Calls OpenRouter LLM with structured output (with_structured_output).
 Outputs a DecisionOutput written to state["decision"]. The verdict is delivered
-to Telegram and not persisted: nothing read the stored history back.
+to Telegram; each decision is also emitted as one structured JSON line, routed
+to BigQuery, to accumulate the (prompt, response) corpus that eval reads. The
+inputs are point-in-time and cannot be reconstructed later, hence capturing
+them as they happen.
 """
 
 from typing import Literal, Optional
@@ -10,6 +13,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 from ..state import AnalysisState
+from ..tools.eval_log import log_decision
 from ..tools.llm import ainvoke_with_fallback
 from ..tools.prompt import build_decision_prompt
 
@@ -82,6 +86,10 @@ async def decision_agent(state: AnalysisState) -> dict:
     preferences = state.get("preferences", {})
     holdings = state.get("holdings") or []
 
+    # Defined up front so the failure path still logs something useful when it
+    # is build_decision_prompt itself that raised.
+    prompt = ""
+
     try:
         prompt = build_decision_prompt(
             ticker=ticker,
@@ -100,16 +108,17 @@ async def decision_agent(state: AnalysisState) -> dict:
             preferred=preferences.get("llm_model"),
         )
 
-        return {"decision": result.model_dump()}
+        decision = result.model_dump()
 
     except Exception as exc:
-        return {
-            "decision": {
-                "verdict": "INSUFFICIENT_DATA",
-                "confidence": "low",
-                "thesis": f"Analysis failed: {exc}",
-                "key_assumptions": [],
-                "stop_loss": None,
-                "target_price": None,
-            }
+        decision = {
+            "verdict": "INSUFFICIENT_DATA",
+            "confidence": "low",
+            "thesis": f"Analysis failed: {exc}",
+            "key_assumptions": [],
+            "stop_loss": None,
+            "target_price": None,
         }
+
+    log_decision(ticker, prompt, decision)
+    return {"decision": decision}

@@ -275,3 +275,37 @@ resource "google_cloud_scheduler_job" "push" {
 
   depends_on = [google_cloud_run_v2_service.bot]
 }
+
+# ── Decision log → BigQuery (eval corpus) ─────────────────────────────────────
+# _Default keeps 30 days; sinks are not retroactive, so this ships with the
+# logging that feeds it.
+resource "google_bigquery_dataset" "eval" {
+  dataset_id  = "trade_compass_eval"
+  location    = var.region
+  description = "Decision records (prompt + verdict) captured as the LLM eval corpus."
+}
+
+resource "google_logging_project_sink" "decisions" {
+  name        = "trade-compass-decisions"
+  destination = "bigquery.googleapis.com/projects/${var.gcp_project_id}/datasets/${google_bigquery_dataset.eval.dataset_id}"
+
+  # One event type from one service: single schema, bounded volume.
+  filter = <<-FILTER
+    resource.type="cloud_run_revision"
+    resource.labels.service_name="${google_cloud_run_v2_service.bot.name}"
+    jsonPayload.event_type="decision"
+  FILTER
+
+  unique_writer_identity = true
+
+  bigquery_options {
+    use_partitioned_tables = true
+  }
+}
+
+# Without this the sink reports healthy and never writes a row.
+resource "google_bigquery_dataset_iam_member" "sink_writer" {
+  dataset_id = google_bigquery_dataset.eval.dataset_id
+  role       = "roles/bigquery.dataEditor"
+  member     = google_logging_project_sink.decisions.writer_identity
+}
