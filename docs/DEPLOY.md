@@ -1,7 +1,8 @@
 # Deployment
 
 `terraform/deploy.sh` provisions everything once. After that, pushing a `v*` tag
-runs `terraform apply` on both Cloud Run modules via
+applies `terraform/bootstrap` (project APIs and the deployer's own roles) and
+then both Cloud Run modules, via
 [`deploy.yml`](../.github/workflows/deploy.yml). The VM and Atlas stay manual.
 
 ## Releasing
@@ -30,9 +31,12 @@ DEPLOYER="gh-deployer@${PROJECT}.iam.gserviceaccount.com"
 
 gcloud iam service-accounts create gh-deployer --project "$PROJECT"
 
-for ROLE in run.admin secretmanager.admin artifactregistry.admin \
-  cloudbuild.builds.editor storage.admin iam.serviceAccountAdmin \
-  iam.serviceAccountUser resourcemanager.projectIamAdmin; do
+# Just enough to let it apply terraform/bootstrap, which then manages the full
+# role list itself. Do not extend this list here — add roles to
+# google_project_iam_member.deployer in terraform/bootstrap/main.tf instead, or
+# it drifts (that is how roles/viewer went missing from this doc for months).
+for ROLE in resourcemanager.projectIamAdmin storage.admin \
+  serviceusage.serviceUsageAdmin; do
   gcloud projects add-iam-policy-binding "$PROJECT" \
     --member "serviceAccount:${DEPLOYER}" --role "roles/${ROLE}" --condition=None
 done
@@ -49,6 +53,26 @@ gcloud iam service-accounts add-iam-policy-binding "$DEPLOYER" --project "$PROJE
   --role roles/iam.workloadIdentityUser \
   --member "principalSet://iam.googleapis.com/${POOL}/attribute.repository/${REPO}"
 ```
+
+## Bootstrap state
+
+`terraform/bootstrap` creates the state bucket, so its own state cannot start
+there. On a new project the first apply is local, then it moves in:
+
+```bash
+cd terraform/bootstrap
+terraform init -backend=false
+terraform apply -var="gcp_project_id=${PROJECT}"
+
+terraform init -migrate-state \
+  -backend-config="bucket=trade-compass-tfstate-${PROJECT}" \
+  -backend-config="prefix=bootstrap"
+```
+
+This repo already had a local `terraform.tfstate` here from its first
+provisioning, so the migrate step must be run once from that machine — CI
+cannot migrate state it does not have, and without it the deploy would try to
+create a bucket that already exists.
 
 ## Repository config
 
