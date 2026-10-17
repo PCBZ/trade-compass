@@ -8,13 +8,12 @@ inputs are point-in-time and cannot be reconstructed later, hence capturing
 them as they happen.
 """
 
-import json
-from datetime import UTC, datetime
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
 from ..state import AnalysisState
+from ..tools.eval_log import log_decision
 from ..tools.llm import ainvoke_with_fallback
 from ..tools.prompt import build_decision_prompt
 
@@ -74,35 +73,6 @@ def _position(ticker: str, holdings: list[dict]) -> dict | None:
 # ── Agent ─────────────────────────────────────────────────────────────────────
 
 
-def _log_decision(ticker: str, prompt: str, response: dict) -> None:
-    """Emit one decision as a structured line for the eval corpus.
-
-    `print` rather than `logging`: Cloud Run turns a stdout line that is valid
-    JSON into a structured `jsonPayload`, which is what the BigQuery sink
-    filters on. A logging formatter would prefix the line and break that, and
-    the bot installs no handlers anyway, so `log.info` would be dropped at the
-    root logger's default WARNING level.
-
-    The corpus is worth nothing if capturing it can break a verdict, so any
-    failure here is swallowed.
-    """
-    try:
-        print(
-            json.dumps(
-                {
-                    "event_type": "decision",
-                    "ts": datetime.now(UTC).isoformat(),
-                    "ticker": ticker,
-                    "prompt": prompt,
-                    "response": response,
-                }
-            ),
-            flush=True,
-        )
-    except Exception:  # noqa: BLE001 — capture must never break the decision
-        pass
-
-
 async def decision_agent(state: AnalysisState) -> dict:
     """
     Builds a structured prompt from fundamental + sentiment analysis,
@@ -150,5 +120,5 @@ async def decision_agent(state: AnalysisState) -> dict:
             "target_price": None,
         }
 
-    _log_decision(ticker, prompt, decision)
+    log_decision(ticker, prompt, decision)
     return {"decision": decision}

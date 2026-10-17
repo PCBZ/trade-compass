@@ -277,14 +277,8 @@ resource "google_cloud_scheduler_job" "push" {
 }
 
 # ── Decision log → BigQuery (eval corpus) ─────────────────────────────────────
-# decision_agent prints one JSON line per verdict and Cloud Run turns that into
-# a structured jsonPayload. Cloud Logging's _Default bucket only keeps 30 days,
-# so without somewhere durable to land, the corpus quietly ages out from the
-# front — and the inputs (price, headlines, TTM figures at that moment) cannot
-# be reconstructed afterwards.
-#
-# Sinks are not retroactive, so this has to exist before the logging does;
-# both ship together for that reason.
+# _Default keeps 30 days; sinks are not retroactive, so this ships with the
+# logging that feeds it.
 resource "google_bigquery_dataset" "eval" {
   dataset_id  = "trade_compass_eval"
   location    = var.region
@@ -295,8 +289,7 @@ resource "google_logging_project_sink" "decisions" {
   name        = "trade-compass-decisions"
   destination = "bigquery.googleapis.com/projects/${var.gcp_project_id}/datasets/${google_bigquery_dataset.eval.dataset_id}"
 
-  # Deliberately narrow: one event type from one service. Keeps the table to a
-  # single schema, and means a component that turns chatty cannot inflate this.
+  # One event type from one service: single schema, bounded volume.
   filter = <<-FILTER
     resource.type="cloud_run_revision"
     resource.labels.service_name="${google_cloud_run_v2_service.bot.name}"
@@ -305,15 +298,12 @@ resource "google_logging_project_sink" "decisions" {
 
   unique_writer_identity = true
 
-  # Otherwise the sink creates date-sharded tables (table_YYYYMMDD), which are
-  # worse to query than a partitioned table for a corpus filtered by date.
   bigquery_options {
     use_partitioned_tables = true
   }
 }
 
-# Load-bearing: without this grant the sink reports healthy, logs no error, and
-# simply never writes a row.
+# Without this the sink reports healthy and never writes a row.
 resource "google_bigquery_dataset_iam_member" "sink_writer" {
   dataset_id = google_bigquery_dataset.eval.dataset_id
   role       = "roles/bigquery.dataEditor"
