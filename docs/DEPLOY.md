@@ -69,10 +69,19 @@ terraform init -migrate-state \
   -backend-config="prefix=bootstrap"
 ```
 
-This repo already had a local `terraform.tfstate` here from its first
-provisioning, so the migrate step must be run once from that machine — CI
-cannot migrate state it does not have, and without it the deploy would try to
-create a bucket that already exists.
+For this repo the local state already exists from the first provisioning, so
+the migrate step has to be run once from that machine. Check first — it is only
+needed while the remote prefix is empty:
+
+```bash
+gcloud storage ls "gs://trade-compass-tfstate-${PROJECT}/bootstrap/"
+```
+
+Anything listed means the state is already there and migration is done; skip
+it. Nothing listed means the `bootstrap` CD job will start from no state and
+try to create the bucket that already exists, which fails the job — and since
+`deploy-api` needs `bootstrap`, that blocks the whole deploy. CI cannot fix
+this itself: it has no copy of the local state to migrate.
 
 ## Repository config
 

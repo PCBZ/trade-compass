@@ -9,6 +9,7 @@ corpus silently becomes worthless, so it is worth a test of its own.
 from __future__ import annotations
 
 import json
+import logging
 
 from src.tools.eval_log import log_decision
 
@@ -56,11 +57,23 @@ def test_the_prompt_is_not_truncated(capsys):
     assert json.loads(capsys.readouterr().out)["prompt"] == prompt
 
 
-def test_capture_failure_never_breaks_the_decision(capsys):
-    """A corpus is not worth losing a verdict over."""
+def test_capture_failure_warns_without_leaking_the_record(capsys, caplog):
+    """A corpus is not worth losing a verdict over — but losing one *silently*
+    is the failure this corpus exists to prevent, so it has to say something.
+
+    Only the exception type and ticker: the record carries real positions, and
+    a warning goes to ordinary logs rather than the sink's dataset.
+    """
 
     class Unserializable:
         pass
 
-    log_decision("MU", "p", {"bad": Unserializable()})  # must not raise
-    assert capsys.readouterr().out == ""
+    prompt = "Weight: 19.5% of portfolio | Cost basis: $1,068.27 per share"
+    with caplog.at_level(logging.WARNING):
+        log_decision("MU", prompt, {"bad": Unserializable()})  # must not raise
+
+    assert capsys.readouterr().out == ""  # nothing half-written to the corpus
+    assert "MU" in caplog.text
+    assert "TypeError" in caplog.text
+    assert "1,068.27" not in caplog.text
+    assert prompt not in caplog.text

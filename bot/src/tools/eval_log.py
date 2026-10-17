@@ -10,8 +10,11 @@ rows when the shape changes, while flat keys stay queryable as plain columns.
 """
 
 import json
+import logging
 from datetime import UTC, datetime
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 # Cloud Logging reads this key off a structured line instead of guessing.
 _SEVERITY = "INFO"
@@ -29,5 +32,8 @@ def log_decision(ticker: str, prompt: str, response: dict[str, Any]) -> None:
             "prompt": prompt,
         }
         print(json.dumps(record), flush=True)
-    except Exception:  # noqa: BLE001 — capture must never break the decision
-        pass
+    except Exception as exc:  # noqa: BLE001 — capture must never break the decision
+        # Losing a record silently is the failure this whole corpus is meant to
+        # avoid, so say so — but only the exception type and ticker. The record
+        # carries the user's positions, and this line is not the sink's.
+        log.warning("decision capture failed for %s: %s", ticker, type(exc).__name__)
