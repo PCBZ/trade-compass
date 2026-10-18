@@ -1,4 +1,6 @@
 terraform {
+  required_version = ">= 1.2"
+
   required_providers {
     google = {
       source  = "hashicorp/google"
@@ -90,4 +92,11 @@ resource "time_sleep" "serviceusage_grant" {
   create_duration = "120s"
 
   depends_on = [google_project_iam_member.deployer["serviceusage.serviceUsageAdmin"]]
+
+  # depends_on only orders; it would not re-run a sleep that already completed.
+  lifecycle {
+    replace_triggered_by = [
+      google_project_iam_member.deployer["serviceusage.serviceUsageAdmin"],
+    ]
+  }
 }
