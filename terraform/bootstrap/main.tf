@@ -27,6 +27,9 @@ resource "google_project_service" "apis" {
   ])
   service            = each.value
   disable_on_destroy = false
+
+  # Enabling a service needs the role granted below.
+  depends_on = [google_project_iam_member.deployer["serviceusage.serviceUsageAdmin"]]
 }
 
 # ── GCS bucket for Terraform remote state ─────────────────────

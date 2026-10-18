@@ -35,8 +35,7 @@ gcloud iam service-accounts create gh-deployer --project "$PROJECT"
 # role list itself. Do not extend this list here — add roles to
 # google_project_iam_member.deployer in terraform/bootstrap/main.tf instead, or
 # it drifts (that is how roles/viewer went missing from this doc for months).
-for ROLE in resourcemanager.projectIamAdmin storage.admin \
-  serviceusage.serviceUsageAdmin; do
+for ROLE in resourcemanager.projectIamAdmin storage.admin; do
   gcloud projects add-iam-policy-binding "$PROJECT" \
     --member "serviceAccount:${DEPLOYER}" --role "roles/${ROLE}" --condition=None
 done
