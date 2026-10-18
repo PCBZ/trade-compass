@@ -1,14 +1,8 @@
 terraform {
-  required_version = ">= 1.2"
-
   required_providers {
     google = {
       source  = "hashicorp/google"
       version = "~> 5.0"
-    }
-    time = {
-      source  = "hashicorp/time"
-      version = "~> 0.11"
     }
   }
 }
@@ -34,8 +28,8 @@ resource "google_project_service" "apis" {
   service            = each.value
   disable_on_destroy = false
 
-  # Enabling a service needs the role granted below; wait for it to propagate.
-  depends_on = [time_sleep.serviceusage_grant]
+  # Enabling a service needs the role granted below.
+  depends_on = [google_project_iam_member.deployer["serviceusage.serviceUsageAdmin"]]
 }
 
 # ── GCS bucket for Terraform remote state ─────────────────────
@@ -84,19 +78,4 @@ resource "google_project_iam_member" "deployer" {
   project = var.gcp_project_id
   role    = "roles/${each.value}"
   member  = local.deployer
-}
-
-# IAM is eventually consistent, and this is the one grant used within the same
-# apply that creates it.
-resource "time_sleep" "serviceusage_grant" {
-  create_duration = "120s"
-
-  depends_on = [google_project_iam_member.deployer["serviceusage.serviceUsageAdmin"]]
-
-  # depends_on only orders; it would not re-run a sleep that already completed.
-  lifecycle {
-    replace_triggered_by = [
-      google_project_iam_member.deployer["serviceusage.serviceUsageAdmin"],
-    ]
-  }
 }
