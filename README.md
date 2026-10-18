@@ -1,6 +1,6 @@
 # trade-compass
 
-[![Lint](https://img.shields.io/github/actions/workflow/status/PCBZ/trade-compass/lint.yml?branch=main&label=lint&logo=githubactions&logoColor=white)](https://github.com/PCBZ/trade-compass/actions/workflows/lint.yml)
+[![CI](https://img.shields.io/github/actions/workflow/status/PCBZ/trade-compass/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/PCBZ/trade-compass/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-0.2-1C3C3C?logo=langchain&logoColor=white)](https://langchain-ai.github.io/langgraph/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
@@ -36,9 +36,10 @@ flowchart TD
     end
 
     DB[("MongoDB Atlas M0<br/>holdings · quotes · preferences · cache")]
+    LOG[("Cloud Logging → BigQuery<br/>decision records")]
     SCHED["Cloud Scheduler<br/>5 jobs/day"]
     FMP["Financial Modeling Prep<br/>price, profile, ratios"]
-    EDGAR["SEC EDGAR<br/>annual statements"]
+    EDGAR["SEC EDGAR<br/>quarterly + annual filings"]
     NEWS["Nasdaq RSS<br/>headlines"]
     LLM["OpenRouter"]
 
@@ -48,6 +49,7 @@ flowchart TD
     BOT --> EDGAR
     BOT --> NEWS
     BOT --> LLM
+    BOT -->|JSON line per verdict| LOG
     BOT <-->|REST| API
     API <--> DB
     VM -->|POST /holdings + /quotes| API
@@ -79,7 +81,7 @@ graph TD;
 	data_agent(data_agent)
 	fundamental_agent(fundamental_agent)
 	sentiment_agent(sentiment_agent)
-	decision_agent(decision_agent)
+	decision_agent("decision_agent<br/>LLM"):::llm
 	portfolio_agent(portfolio_agent)
 	__end__([<p>__end__</p>]):::last
 	decision_agent --> __end__;
@@ -95,7 +97,10 @@ graph TD;
 	classDef default fill:#f2f0ff,line-height:1.2
 	classDef first fill-opacity:0
 	classDef last fill:#bfb6fc
+	classDef llm fill:#ffe3b3,stroke:#e08a1e,line-height:1.2
 ```
+
+The orange node calls an LLM; the purple ones are plain Python.
 
 Dotted arrows are conditional edges: `__start__` goes to `data_agent` when `mode` is
 `single` and to `portfolio_agent` otherwise, and either branch short-circuits to
@@ -103,28 +108,48 @@ Dotted arrows are conditional edges: `__start__` goes to `data_agent` when `mode
 single-stock nodes by invoking `single_stock_graph` per holding, which is a nested call
 rather than an edge — so it does not appear above.
 
-| Node | Does | LLM? |
+| Node | Kind | Does |
 |------|------|------|
-| [`data_agent`](bot/src/agents/data.py) | Fetches 8 sources in parallel — 3 FMP endpoints, SEC EDGAR, Nasdaq RSS, and 3 calls to our own API | — |
-| [`fundamental_agent`](bot/src/agents/fundamental.py) | Organises valuation, YoY growth, quality ratios; computes Piotroski / Altman-Z | — |
-| [`sentiment_agent`](bot/src/agents/sentiment.py) | Organises 52-week position and news headlines | — |
-| [`decision_agent`](bot/src/agents/decision.py) | Synthesises everything into a structured verdict | ✅ |
-| [`portfolio_agent`](bot/src/agents/portfolio.py) | Runs the single-stock subgraph per holding, then scores concentration | — |
+| [`data_agent`](bot/src/agents/data.py) | I/O, no LLM | Fetches 8 sources in parallel — 3 FMP endpoints, SEC EDGAR, Nasdaq RSS, and 3 calls to our own API |
+| [`fundamental_agent`](bot/src/agents/fundamental.py) | deterministic | Organises valuation, trailing-twelve-month growth and quality ratios; computes Piotroski / Altman-Z |
+| [`sentiment_agent`](bot/src/agents/sentiment.py) | deterministic | Organises 52-week position and news headlines |
+| [`decision_agent`](bot/src/agents/decision.py) | **LLM** | Synthesises everything into a structured verdict |
+| [`portfolio_agent`](bot/src/agents/portfolio.py) | orchestrator, no LLM of its own | Runs the single-stock subgraph per holding — one `decision_agent` call each — then scores concentration |
 
 Two design choices worth knowing:
 
 1. **Only `decision_agent` calls the LLM.** The fundamental and sentiment agents are
    plain Python — they compute derived metrics and shape context. One analysis costs
-   exactly one LLM call.
-2. **Objective anchors come from data, not the model.** Piotroski F-Score and Altman
-   Z-Score are computed from SEC filings rather than inferred, and the verdict is
-   forced through a Pydantic schema via `with_structured_output`.
+   one LLM call (more only if a model fails over to the next configured one), and
+   `/portfolio` costs one per holding.
+2. **Scores are rule-based, not model-inferred.** Piotroski F-Score and Altman Z-Score
+   are computed from SEC filings, and the verdict is forced through a Pydantic schema
+   via `with_structured_output`. Altman's Z grows without bound for a low-debt
+   large-cap, so the prompt shows it capped at `>10` rather than a number that would
+   read as extraordinary.
+3. **Fundamentals are trailing-twelve-month.** Annual filings alone can be a year
+   stale, so quarterly filings are decomposed into TTM figures: Q4 is never filed on
+   its own (it is derived from the annual total), cash-flow facts arrive year-to-date
+   and are differenced, and share counts are not.
 
 Routing lives in conditional edges ([`graph/workflow.py`](bot/src/graph/workflow.py)),
 not in a separate node. Two graphs are compiled over the same agents: `graph` (routes on
 `mode`) and `single_stock_graph`, which omits `portfolio_agent` — otherwise
 `portfolio_agent` invoking the full graph could route straight back into itself.
 Regenerate either topology with `python bot/scripts/draw_graph.py --write`.
+
+### Decision records
+
+Each verdict is also written to stdout as one flat JSON line carrying the full prompt
+and the model's response. Cloud Run parses that into a structured log entry, and a log
+sink routes it to a BigQuery dataset (`trade_compass_eval`) defined in
+[`terraform/bot/`](terraform/bot/main.tf). The point is a corpus for evaluating the
+LLM step: the inputs — price, headlines, TTM figures at that moment — cannot be
+reconstructed later, so they have to be captured as decisions happen. A record is a few
+KB.
+
+The prompt includes your positions (weight, shares, cost basis, unrealised P&L), so the
+dataset holds them. It is private to your GCP project; treat it like the database.
 
 ---
 
@@ -214,10 +239,11 @@ Atlas cluster → API on Cloud Run → write `bot/.env` → VM again with the re
 `api_url` → bot on Cloud Run → register the Telegram webhook. Cloud Run URLs and the
 generated API key are printed at the end.
 
-This is a one-time provision. After it, merges to `main` that touch `api/` or
-`bot/` run `terraform apply` on that Cloud Run module via GitHub Actions — see
-[`docs/DEPLOY.md`](docs/DEPLOY.md) for the CI/CD setup. The VM, Atlas, and the
-buckets stay with `deploy.sh` by hand.
+This is a one-time provision. After it, pushing a `v*` tag runs `terraform apply` via
+GitHub Actions — project bootstrap first, then the API, then the bot. Merging to `main`
+does not deploy; cut a release with `git tag vX.Y.Z && git push origin vX.Y.Z`. See
+[`docs/DEPLOY.md`](docs/DEPLOY.md) for the CI/CD setup. The VM and Atlas stay with
+`deploy.sh` by hand.
 
 ### 3. Finish the VM by hand
 
@@ -251,6 +277,7 @@ Each unit has its own requirements file and its own virtualenv.
 
 ```bash
 python -m venv api/.venv && api/.venv/bin/pip install -r api/requirements-dev.txt
+python -m venv bot/.venv && bot/.venv/bin/pip install -r bot/requirements-dev.txt -r bot/requirements.txt
 ```
 
 Run the API against a local or Atlas MongoDB:
@@ -259,7 +286,7 @@ Run the API against a local or Atlas MongoDB:
 cd api && API_KEY=dev MONGODB_URI=mongodb://localhost:27017 uvicorn src.main:app --reload
 ```
 
-Run the bot (needs `bot/.env` populated):
+Run the bot (needs `bot/.env` populated, including `SEC_CONTACT` — EDGAR rejects requests without one):
 
 ```bash
 cd bot && uvicorn src.main:app --reload --port 8081
@@ -273,21 +300,28 @@ directly.
 
 ```bash
 cd api && pytest tests/ -v
+cd bot && pytest tests/unit -v --cov=src --cov-report=term-missing
 ```
 
-`api/tests/` are unit tests against `mongomock-motor` and run in CI. `bot/tests/` are
-**live integration tests** — they hit the real FMP, OpenRouter, and REST APIs and need a
-populated `bot/.env`, so CI skips them. Run them by hand when you change a data source:
+Both suites run in CI. `api/tests/` run against `mongomock-motor`. `bot/tests/unit/`
+cover the plain-Python logic — EDGAR/TTM extraction, scoring, prompt rendering, parsing,
+caching — with no network and no LLM call, so they cost nothing to run. The coverage
+report is informational; nothing fails on it.
+
+The `bot/tests/test_*.py` files are **live integration tests** — they hit the real FMP,
+OpenRouter, and REST APIs and need a populated `bot/.env`, so CI skips them. Run them by
+hand when you change a data source:
 
 ```bash
 python -m pytest bot/tests/test_fmp.py -v
 ```
 
-### Lint
+### CI
 
-CI ([`.github/workflows/lint.yml`](.github/workflows/lint.yml)) enforces `ruff check`
-and `ruff format --check` across `api/src bot/src sync/src`, `terraform fmt` plus
-`validate` on all four Terraform modules, and ShellCheck on `terraform/`.
+[`ci.yml`](.github/workflows/ci.yml) runs on every push and on pull requests to `main`:
+`ruff check` and `ruff format --check` across `api/src bot/src sync/src`; the api and
+bot unit suites; `terraform fmt -check` on everything plus `terraform validate` on
+`bootstrap`, `compute_engine`, `atlas` and `cloud_run`; and ShellCheck on `terraform/`.
 
 ---
 
@@ -311,7 +345,8 @@ and `ruff format --check` across `api/src bot/src sync/src`, `terraform fmt` plu
 
 Edit [`bot/src/config.json`](bot/src/config.json) to change the selectable models —
 `id` must be a valid OpenRouter model slug, and exactly one entry should carry
-`"default": true`. The list surfaces in `/model` automatically.
+`"default": true`. The list surfaces in `/model` automatically. The selected model
+is tried first; if it fails, the rest are tried in file order.
 
 ### Preferences
 
@@ -333,14 +368,16 @@ concentration-risk check. Set them with `PUT /preferences`.
 - **Request volume.** `data_agent` spends 3 FMP requests per ticker. `/profile` is cached
   for 30 days and `/key-metrics` for 7, so a steady-state push costs roughly one
   request per holding. Empty answers are cached too, for 24 hours, which stops a
-  restricted symbol from being re-asked five times a day.
+  restricted symbol from being re-asked five times a day. EDGAR filings are cached for
+  7 days, and the ticker-to-CIK map for 30.
 - **Cold starts.** Cloud Run scales to zero, so the first Telegram command after an idle
   period takes a few extra seconds.
 - **The API is public with key-only auth.** Both Cloud Run services allow unauthenticated
   invocation; `X-API-Key` is the only barrier on the data layer. `/webhook` and `/push`
   on the bot are unauthenticated.
 - **Free OpenRouter models are rate-limited** and occasionally return malformed
-  structured output; `decision_agent` falls back to `INSUFFICIENT_DATA` when that happens.
+  structured output; `decision_agent` tries the other configured models in turn and
+  returns `INSUFFICIENT_DATA` only if all of them fail.
 - **Non-STOCK positions are skipped** by `/portfolio`. `security_type` comes from
   OpenD's own classification, so ETFs, funds, bonds and warrants are filtered out before
   any data is fetched. `/decide` on an ETF ticker still works: FMP's `isEtf` flag routes
@@ -349,6 +386,14 @@ concentration-risk check. Set them with `PUT /preferences`.
   firehose for a symbol it does not cover, so items are filtered by the tickers each one
   declares. A holding with no genuinely related coverage gets no headlines rather than
   unrelated ones — Berkshire is usually empty.
+- **Nothing alerts when the sync stops.** If the VM's cron is missing or dies, holdings
+  go stale with no error anywhere; check `sudo crontab -l` and the sync log first.
+  Monitoring for this is tracked in [#55](https://github.com/PCBZ/trade-compass/issues/55).
+- **A from-scratch `deploy.sh` currently stops at step 1.** `terraform/bootstrap` now
+  keeps its state in the bucket it creates, so on a brand-new project its first
+  `terraform init` fails; run that first apply by hand as
+  [`docs/DEPLOY.md`](docs/DEPLOY.md#bootstrap-state) describes. Existing deployments
+  are unaffected.
 
 ---
 
@@ -356,4 +401,5 @@ concentration-risk check. Set them with `PUT /preferences`.
 
 Apache 2.0 — see [LICENSE](LICENSE).
 
-For the original system design rationale, see [DESIGN.md](DESIGN.md).
+[DESIGN.md](DESIGN.md) is the original design document, written before the current data
+sources and pipeline; where it disagrees with this README, this README is right.

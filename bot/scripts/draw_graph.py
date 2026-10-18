@@ -41,6 +41,25 @@ _GRAPHS = {
 }
 
 
+# Nodes that call an LLM; every other node is plain Python. The agents carry no
+# such metadata, so it is listed here — and checked against the graph below, so
+# renaming a node fails loudly instead of silently dropping its highlight.
+_LLM_NODES = ("decision_agent",)
+
+
+def _annotate(mermaid: str) -> str:
+    """Mark the LLM nodes, so the diagram shows which ones call a model."""
+    for node in _LLM_NODES:
+        plain = f"\t{node}({node})"
+        if plain not in mermaid:
+            raise SystemExit(f"{node} is not in the rendered graph — update _LLM_NODES")
+        mermaid = mermaid.replace(plain, f'\t{node}("{node}<br/>LLM"):::llm')
+    return (
+        mermaid.rstrip("\n")
+        + "\n\tclassDef llm fill:#ffe3b3,stroke:#e08a1e,line-height:1.2\n"
+    )
+
+
 _README = _ROOT / "README.md"
 
 # The block in README.md tagged with _MARKER is replaced wholesale by --write.
@@ -77,7 +96,7 @@ def main() -> None:
     )
     args = ap.parse_args()
 
-    rendered = {n: g.get_graph().draw_mermaid() for n, g in _GRAPHS.items()}
+    rendered = {n: _annotate(g.get_graph().draw_mermaid()) for n, g in _GRAPHS.items()}
 
     if args.check:
         text = _README.read_text()

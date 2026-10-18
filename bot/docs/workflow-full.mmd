@@ -8,7 +8,7 @@ graph TD;
 	data_agent(data_agent)
 	fundamental_agent(fundamental_agent)
 	sentiment_agent(sentiment_agent)
-	decision_agent(decision_agent)
+	decision_agent("decision_agent<br/>LLM"):::llm
 	portfolio_agent(portfolio_agent)
 	__end__([<p>__end__</p>]):::last
 	decision_agent --> __end__;
@@ -24,3 +24,4 @@ graph TD;
 	classDef default fill:#f2f0ff,line-height:1.2
 	classDef first fill-opacity:0
 	classDef last fill:#bfb6fc
+	classDef llm fill:#ffe3b3,stroke:#e08a1e,line-height:1.2
