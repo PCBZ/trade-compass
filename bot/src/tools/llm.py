@@ -15,11 +15,9 @@ from typing import Any, Type
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
-from ..config import get_default_model_id, get_model_ids
+from ..config import get_default_model_id, get_llm_base_url, get_model_ids
 
 log = logging.getLogger(__name__)
-
-_GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 
 def get_llm(
@@ -44,7 +42,7 @@ def get_llm(
     llm = ChatOpenAI(
         model=model,
         openai_api_key=os.environ.get("GEMINI_API_KEY", ""),
-        openai_api_base=_GEMINI_BASE,
+        openai_api_base=get_llm_base_url(),
         temperature=0.2,  # low temperature for consistent financial analysis
     )
 

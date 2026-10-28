@@ -226,6 +226,7 @@ resource "google_cloud_run_v2_service" "bot" {
     null_resource.build_push,
     google_secret_manager_secret_iam_member.bot_secret_access,
     google_secret_manager_secret_iam_member.bot_api_key_access,
+    google_secret_manager_secret_version.gemini_api_key,
   ]
 }
 

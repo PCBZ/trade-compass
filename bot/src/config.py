@@ -22,6 +22,11 @@ _config = _load()
 # ── LLM models ────────────────────────────────────────────────────────────────
 
 
+def get_llm_base_url() -> str:
+    """Return the OpenAI-compatible endpoint the LLM client talks to."""
+    return _config["llm_base_url"]
+
+
 def get_llm_models() -> list[dict[str, Any]]:
     """Return all configured LLM models."""
     return _config["llm_models"]

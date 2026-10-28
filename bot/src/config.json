@@ -1,10 +1,17 @@
 {
+  "llm_base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
   "llm_models": [
     {
       "id": "gemini-3.6-flash",
       "name": "Gemini 3.6 Flash",
       "description": "Best reasoning quality. Default.",
       "default": true
+    },
+    {
+      "id": "gemini-3.8-flash",
+      "name": "Gemini 3.8 Flash",
+      "description": "Newest Flash.",
+      "default": false
     },
     {
       "id": "gemini-3.1-flash-lite",
