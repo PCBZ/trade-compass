@@ -91,4 +91,4 @@ Settings → Secrets and variables → Actions.
 `WIF_SERVICE_ACCOUNT` (the `gh-deployer@…` email), `SEC_CONTACT` (your email).
 
 **Secrets** (written into Secret Manager on each apply):
-`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `FMP_API_KEY`, `OPENROUTER_API_KEY`.
+`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `FMP_API_KEY`, `GEMINI_API_KEY`.

@@ -1,11 +1,11 @@
-"""Integration tests — OpenRouter LLM connectivity.
+"""Integration tests — Gemini LLM connectivity.
 
-Verifies we can reach OpenRouter and get a structured response.
-Requires OPENROUTER_API_KEY in bot/.env.
+Verifies we can reach Gemini and get a structured response.
+Requires GEMINI_API_KEY in bot/.env.
 
 Run:
     cd trade-compass
-    python -m pytest bot/tests/test_openrouter.py -v
+    python -m pytest bot/tests/test_gemini.py -v
 """
 
 import pytest

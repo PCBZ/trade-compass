@@ -22,7 +22,7 @@ for _var in (
     "TELEGRAM_CHAT_ID",
     "API_BASE_URL",
     "API_KEY",
-    "OPENROUTER_API_KEY",
+    "GEMINI_API_KEY",
 ):
     os.environ.setdefault(_var, "unused-by-draw-graph")
 

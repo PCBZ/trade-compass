@@ -101,16 +101,16 @@ resource "google_secret_manager_secret_version" "fmp_api_key" {
   secret_data = var.fmp_api_key
 }
 
-resource "google_secret_manager_secret" "openrouter_api_key" {
-  secret_id = "trade-compass-openrouter-api-key"
+resource "google_secret_manager_secret" "gemini_api_key" {
+  secret_id = "trade-compass-gemini-api-key"
   replication {
     auto {}
   }
 }
 
-resource "google_secret_manager_secret_version" "openrouter_api_key" {
-  secret      = google_secret_manager_secret.openrouter_api_key.id
-  secret_data = var.openrouter_api_key
+resource "google_secret_manager_secret_version" "gemini_api_key" {
+  secret      = google_secret_manager_secret.gemini_api_key.id
+  secret_data = var.gemini_api_key
 }
 
 # ── Grant bot SA access to all secrets ───────────────────────────────────────
@@ -119,7 +119,7 @@ locals {
     google_secret_manager_secret.telegram_bot_token.id,
     google_secret_manager_secret.telegram_chat_id.id,
     google_secret_manager_secret.fmp_api_key.id,
-    google_secret_manager_secret.openrouter_api_key.id,
+    google_secret_manager_secret.gemini_api_key.id,
   ]
 }
 
@@ -179,10 +179,10 @@ resource "google_cloud_run_v2_service" "bot" {
       }
 
       env {
-        name = "OPENROUTER_API_KEY"
+        name = "GEMINI_API_KEY"
         value_source {
           secret_key_ref {
-            secret  = google_secret_manager_secret.openrouter_api_key.secret_id
+            secret  = google_secret_manager_secret.gemini_api_key.secret_id
             version = "latest"
           }
         }

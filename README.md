@@ -41,7 +41,7 @@ flowchart TD
     FMP["Financial Modeling Prep<br/>price, profile, ratios"]
     EDGAR["SEC EDGAR<br/>quarterly + annual filings"]
     NEWS["Nasdaq RSS<br/>headlines"]
-    LLM["OpenRouter"]
+    LLM["Gemini API"]
 
     User <-->|webhook| BOT
     SCHED -->|POST /push| BOT
@@ -209,7 +209,7 @@ Models are defined in [`api/src/models.py`](api/src/models.py).
 - A Moomoo/Futu account with US market data (OpenD needs real credentials)
 - API keys: [Telegram BotFather](https://t.me/botfather),
   [Financial Modeling Prep](https://site.financialmodelingprep.com/),
-  [OpenRouter](https://openrouter.ai/)
+  [Gemini API](https://aistudio.google.com/apikey)
 - A contact email for `SEC_CONTACT`. SEC EDGAR and the Nasdaq RSS feed need no key,
   but EDGAR rejects any request whose User-Agent carries no email address
 
@@ -225,7 +225,7 @@ Compute Engine needs `ssh_allowed_ips`.
 
 Put your own keys in `bot/.env` (`cp bot/.env.example bot/.env`). The deploy script
 fills in `API_URL` and `API_KEY` for you and preserves anything already set, but
-`FMP_API_KEY`, `OPENROUTER_API_KEY`, `TELEGRAM_BOT_TOKEN`, and `TELEGRAM_CHAT_ID` are
+`FMP_API_KEY`, `GEMINI_API_KEY`, `TELEGRAM_BOT_TOKEN`, and `TELEGRAM_CHAT_ID` are
 yours to supply. Get your chat ID by messaging [@userinfobot](https://t.me/userinfobot).
 
 ### 2. Deploy
@@ -309,7 +309,7 @@ caching — with no network and no LLM call, so they cost nothing to run. The co
 report is informational; nothing fails on it.
 
 The `bot/tests/test_*.py` files are **live integration tests** — they hit the real FMP,
-OpenRouter, and REST APIs and need a populated `bot/.env`, so CI skips them. Run them by
+Gemini, and REST APIs and need a populated `bot/.env`, so CI skips them. Run them by
 hand when you change a data source:
 
 ```bash
@@ -335,7 +335,7 @@ bot unit suites; `terraform fmt -check` on everything plus `terraform validate` 
 | `API_URL`, `API_KEY` | bot, sync | Written by `deploy.sh`; key stored in Secret Manager |
 | `MONGODB_URI` | api | From the Atlas module |
 | `FMP_API_KEY` | bot | Financial Modeling Prep |
-| `OPENROUTER_API_KEY` | bot | OpenRouter |
+| `GEMINI_API_KEY` | bot | Gemini API |
 | `TELEGRAM_BOT_TOKEN` | bot | BotFather |
 | `TELEGRAM_CHAT_ID` | bot | Push destination |
 | `SEC_CONTACT` | bot | Contact email; EDGAR returns 403 without one |
@@ -344,7 +344,7 @@ bot unit suites; `terraform fmt -check` on everything plus `terraform validate` 
 ### LLM models
 
 Edit [`bot/src/config.json`](bot/src/config.json) to change the selectable models —
-`id` must be a valid OpenRouter model slug, and exactly one entry should carry
+`id` must be a valid Gemini model code (e.g. `gemini-3.6-flash`), and exactly one entry should carry
 `"default": true`. The list surfaces in `/model` automatically. The selected model
 is tried first; if it fails, the rest are tried in file order.
 
@@ -375,9 +375,10 @@ concentration-risk check. Set them with `PUT /preferences`.
 - **The API is public with key-only auth.** Both Cloud Run services allow unauthenticated
   invocation; `X-API-Key` is the only barrier on the data layer. `/webhook` and `/push`
   on the bot are unauthenticated.
-- **Free OpenRouter models are rate-limited** and occasionally return malformed
-  structured output; `decision_agent` tries the other configured models in turn and
-  returns `INSUFFICIENT_DATA` only if all of them fail.
+- **Gemini free-tier models are rate-limited** and may return malformed structured
+  output; `decision_agent` tries the other configured models in turn and returns
+  `INSUFFICIENT_DATA` only if all of them fail. Free-tier prompts may be used by Google
+  to improve its products, and they contain your positions.
 - **Non-STOCK positions are skipped** by `/portfolio`. `security_type` comes from
   OpenD's own classification, so ETFs, funds, bonds and warrants are filtered out before
   any data is fetched. `/decide` on an ETF ticker still works: FMP's `isEtf` flag routes

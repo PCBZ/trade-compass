@@ -33,8 +33,8 @@ variable "fmp_api_key" {
   sensitive   = true
 }
 
-variable "openrouter_api_key" {
-  description = "OpenRouter API key for LLM access"
+variable "gemini_api_key" {
+  description = "Gemini API key for LLM access"
   type        = string
   sensitive   = true
 }

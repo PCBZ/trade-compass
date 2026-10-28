@@ -1,13 +1,11 @@
-"""LLM client via OpenRouter.
+"""LLM client via the Gemini API's OpenAI-compatible endpoint.
 
 Model is selected dynamically from user preferences (set via /model in Telegram).
 Available models are defined in bot/config.json.
 Default model is whichever entry has "default": true in config.json.
 
-Every configured model is a `:free` variant, which OpenRouter serves from a pool
-shared across all of its users. When that pool saturates the provider answers 429
-with no warning, so a single-model call fails for reasons that have nothing to do
-with our request — hence `ainvoke_with_fallback`.
+The free tier is rate-limited per model, so one model can answer 429 while
+another still has quota — hence `ainvoke_with_fallback`.
 """
 
 import logging
@@ -21,7 +19,7 @@ from ..config import get_default_model_id, get_model_ids
 
 log = logging.getLogger(__name__)
 
-_OPENROUTER_BASE = "https://openrouter.ai/api/v1"
+_GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 
 def get_llm(
@@ -29,7 +27,7 @@ def get_llm(
     output_schema: Type[BaseModel] | None = None,
 ) -> Any:
     """
-    Returns a LangChain ChatOpenAI client pointed at OpenRouter.
+    Returns a LangChain ChatOpenAI client pointed at the Gemini API.
 
     Model priority:
       1. model argument (from user preferences, set via /model in Telegram)
@@ -39,14 +37,14 @@ def get_llm(
     which guarantees the response is parsed into the given Pydantic model.
 
     Prefer ainvoke_with_fallback() for anything user-facing — it survives a
-    saturated free pool, which this client alone does not.
+    rate-limited model, which this client alone does not.
     """
     model = model or get_default_model_id()
 
     llm = ChatOpenAI(
         model=model,
-        openai_api_key=os.environ.get("OPENROUTER_API_KEY", ""),
-        openai_api_base=_OPENROUTER_BASE,
+        openai_api_key=os.environ.get("GEMINI_API_KEY", ""),
+        openai_api_base=_GEMINI_BASE,
         temperature=0.2,  # low temperature for consistent financial analysis
     )
 
@@ -69,9 +67,9 @@ async def ainvoke_with_fallback(
 ) -> Any:
     """Invoke the preferred model, falling through the rest if it fails.
 
-    Retrying the same model is usually pointless: a saturated free pool stays
-    saturated for minutes, and a model whose free tier was withdrawn answers 404
-    forever. Another provider's pool is the thing likely to work right now.
+    Retrying the same model is usually pointless: an exhausted free-tier quota
+    stays exhausted until it resets, and a retired model answers 404 forever.
+    Another model's quota is the thing likely to work right now.
 
     Raises the last error if every configured model fails.
     """
