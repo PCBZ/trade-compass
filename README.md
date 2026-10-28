@@ -344,7 +344,7 @@ bot unit suites; `terraform fmt -check` on everything plus `terraform validate` 
 ### LLM models
 
 Edit [`bot/src/config.json`](bot/src/config.json) to change the selectable models —
-`id` must be a valid Gemini model code (e.g. `gemini-3.6-flash`), and exactly one entry should carry
+`id` must be a valid Gemini model code (e.g. `gemini-3.8-flash`), and exactly one entry should carry
 `"default": true`. The list surfaces in `/model` automatically. The selected model
 is tried first; if it fails, the rest are tried in file order.
 
