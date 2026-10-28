@@ -1,20 +1,21 @@
 {
+  "llm_base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
   "llm_models": [
     {
-      "id": "nvidia/nemotron-3-super-120b-a12b:free",
-      "name": "Nemotron 3 Super 120B",
-      "description": "Best reasoning quality. Default.",
+      "id": "gemini-3.8-flash",
+      "name": "Gemini 3.8 Flash",
+      "description": "Newest Flash. Default.",
       "default": true
     },
     {
-      "id": "nvidia/nemotron-3.5-lightning:free",
-      "name": "Nemotron 3.5 Lightning",
-      "description": "Same speed, 1M context.",
+      "id": "gemini-3.6-flash",
+      "name": "Gemini 3.6 Flash",
+      "description": "Previous Flash.",
       "default": false
     },
     {
-      "id": "nvidia/nemotron-3-nano-30b-a3b:free",
-      "name": "Nemotron 3 Nano 30B",
+      "id": "gemini-3.1-flash-lite",
+      "name": "Gemini 3.1 Flash-Lite",
       "description": "Fastest. Lighter reasoning.",
       "default": false
     }

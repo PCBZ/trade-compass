@@ -71,7 +71,7 @@ set_env "API_KEY"  "${API_KEY}"
 
 # Only add placeholder lines if key is not already present
 grep -q "^FMP_API_KEY=" "${ENV_FILE}"         || echo "FMP_API_KEY="         >> "${ENV_FILE}"
-grep -q "^OPENROUTER_API_KEY=" "${ENV_FILE}"  || echo "OPENROUTER_API_KEY="  >> "${ENV_FILE}"
+grep -q "^GEMINI_API_KEY=" "${ENV_FILE}"      || echo "GEMINI_API_KEY="      >> "${ENV_FILE}"
 grep -q "^TELEGRAM_BOT_TOKEN=" "${ENV_FILE}"  || echo "TELEGRAM_BOT_TOKEN="  >> "${ENV_FILE}"
 grep -q "^TELEGRAM_CHAT_ID=" "${ENV_FILE}"    || echo "TELEGRAM_CHAT_ID="    >> "${ENV_FILE}"
 
@@ -86,7 +86,7 @@ terraform apply -auto-approve \
   -var="telegram_bot_token=$(grep '^TELEGRAM_BOT_TOKEN=' "${ROOT_DIR}/bot/.env" | cut -d= -f2-)" \
   -var="telegram_chat_id=$(grep '^TELEGRAM_CHAT_ID=' "${ROOT_DIR}/bot/.env" | cut -d= -f2-)" \
   -var="fmp_api_key=$(grep '^FMP_API_KEY=' "${ROOT_DIR}/bot/.env" | cut -d= -f2-)" \
-  -var="openrouter_api_key=$(grep '^OPENROUTER_API_KEY=' "${ROOT_DIR}/bot/.env" | cut -d= -f2-)"
+  -var="gemini_api_key=$(grep '^GEMINI_API_KEY=' "${ROOT_DIR}/bot/.env" | cut -d= -f2-)"
 BOT_URL=$(terraform output -raw bot_url)
 cd ..
 

@@ -33,10 +33,15 @@ variable "fmp_api_key" {
   sensitive   = true
 }
 
-variable "openrouter_api_key" {
-  description = "OpenRouter API key for LLM access"
+variable "gemini_api_key" {
+  description = "Gemini API key for LLM access"
   type        = string
   sensitive   = true
+
+  validation {
+    condition     = length(var.gemini_api_key) > 0
+    error_message = "gemini_api_key is empty; set the GEMINI_API_KEY GitHub secret (or bot/.env)."
+  }
 }
 
 variable "sec_contact" {

@@ -114,4 +114,4 @@ jobs:
             -var="telegram_bot_token=${{ secrets.TELEGRAM_BOT_TOKEN }}" \
             -var="telegram_chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
             -var="fmp_api_key=${{ secrets.FMP_API_KEY }}" \
-            -var="openrouter_api_key=${{ secrets.OPENROUTER_API_KEY }}"
+            -var="gemini_api_key=${{ secrets.GEMINI_API_KEY }}"

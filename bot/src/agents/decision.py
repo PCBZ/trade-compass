@@ -1,6 +1,6 @@
 """Decision Agent — synthesises fundamental + sentiment via LLM.
 
-Calls OpenRouter LLM with structured output (with_structured_output).
+Calls the Gemini LLM with structured output (with_structured_output).
 Outputs a DecisionOutput written to state["decision"]. The verdict is delivered
 to Telegram; each decision is also emitted as one structured JSON line, routed
 to BigQuery, to accumulate the (prompt, response) corpus that eval reads. The
@@ -76,7 +76,7 @@ def _position(ticker: str, holdings: list[dict]) -> dict | None:
 async def decision_agent(state: AnalysisState) -> dict:
     """
     Builds a structured prompt from fundamental + sentiment analysis,
-    calls OpenRouter LLM with structured output.
+    calls the Gemini LLM with structured output.
     Writes: decision
     """
     ticker = state.get("ticker", "")
