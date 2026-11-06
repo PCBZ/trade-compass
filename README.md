@@ -1,6 +1,7 @@
 # trade-compass
 
 [![CI](https://img.shields.io/github/actions/workflow/status/PCBZ/trade-compass/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/PCBZ/trade-compass/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/PCBZ/trade-compass/graph/badge.svg)](https://codecov.io/gh/PCBZ/trade-compass)
 [![Python](https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-0.2-1C3C3C?logo=langchain&logoColor=white)](https://langchain-ai.github.io/langgraph/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
