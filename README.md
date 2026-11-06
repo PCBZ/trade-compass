@@ -19,7 +19,7 @@ reasoning — straight to Telegram.
 > Nothing here is investment advice.
 
 **Documentation lives in the [wiki](https://github.com/PCBZ/trade-compass/wiki)** —
-architecture, how the pipeline and the LLM layer work, operations and a runbook. This
+architecture, how the pipeline and the LLM layer work, and operations. This
 README is the quick start.
 
 ---
@@ -159,8 +159,7 @@ positions and an OpenD price snapshot. Logs land in `/var/log/trade-compass-sync
 
 **Do not skip `setup_cron.sh`.** The bootstrap never installs it, and nothing else
 will: without it holdings sit frozen at whatever was last pushed. Re-check
-`sudo crontab -l` after any VM recreate. More in the
-[Runbook](https://github.com/PCBZ/trade-compass/wiki/Runbook).
+`sudo crontab -l` after any VM recreate.
 
 ---
 
