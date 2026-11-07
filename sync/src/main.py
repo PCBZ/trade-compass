@@ -3,7 +3,10 @@
 import logging
 import math
 import os
+import sys
+from datetime import datetime, time
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import httpx
 from dotenv import load_dotenv
@@ -12,6 +15,7 @@ from futu import (
     OpenQuoteContext,
     OpenSecTradeContext,
     RET_OK,
+    TradeDateMarket,
     TrdEnv,
     TrdMarket,
 )
@@ -29,6 +33,53 @@ API_KEY = os.environ["API_KEY"]
 # OpenD security types the REST API accepts verbatim; everything else it knows
 # about (IDX, DRVT, PLATE, ...) is not an equity position and maps to NONE.
 _API_SECURITY_TYPES = frozenset({"STOCK", "ETF", "BOND", "WARRANT", "FUTURE"})
+
+
+# US market hours, in the market's own time zone. Cron fires on a UTC window
+# wide enough for both standard and daylight time; these decide whether a given
+# firing is inside the session, so daylight saving never shifts the sync.
+_ET = ZoneInfo("America/New_York")
+_OPEN = time(9, 30)
+_CLOSE = time(16, 0)
+_EARLY_CLOSE = time(13, 0)  # OpenD marks a half day as trade_date_type MORNING
+
+
+def _in_session(now: datetime, day_type: str | None) -> bool:
+    """Whether `now` is inside the US regular session.
+
+    `day_type` is OpenD's trade_date_type for that date, or None when the market
+    is closed all day. The close minute itself counts, so the run at the bell
+    captures the closing snapshot.
+    """
+    if day_type is None:
+        return False
+    close = _EARLY_CLOSE if day_type == "MORNING" else _CLOSE
+    clock = now.astimezone(_ET).time().replace(second=0, microsecond=0)
+    return _OPEN <= clock <= close
+
+
+def _trading_day_type(day: str) -> str | None:
+    """OpenD's trade_date_type for `day` (YYYY-MM-DD), or None on a holiday.
+
+    If OpenD cannot answer, assume a full weekday session: the sync would fail
+    on the same outage anyway, and skipping a real trading day silently is the
+    worse mistake.
+    """
+    try:
+        ctx = OpenQuoteContext(host=OPEND_HOST, port=OPEND_PORT)
+        try:
+            ret, data = ctx.request_trading_days(
+                market=TradeDateMarket.US, start=day, end=day
+            )
+        finally:
+            ctx.close()
+    except Exception as exc:  # noqa: BLE001 — same fail-open rule as an error reply
+        log.warning("trading-day lookup raised %r; assuming a full session", exc)
+        return "WHOLE"
+    if ret != RET_OK:
+        log.warning("request_trading_days failed: %s; assuming a full session", data)
+        return "WHOLE"
+    return data[0]["trade_date_type"] if data else None
 
 
 def _num(value) -> float:
@@ -235,6 +286,15 @@ def push_holdings(holdings: list[dict]) -> None:
 
 
 def main() -> None:
+    now = datetime.now(_ET)
+    # The clock check needs no OpenD call, so most off-hours firings end here.
+    if "--force" not in sys.argv and not (
+        _in_session(now, "WHOLE")
+        and _in_session(now, _trading_day_type(now.date().isoformat()))
+    ):
+        log.info("US market closed at %s ET; nothing to sync", now.strftime("%a %H:%M"))
+        return
+
     log.info("Starting sync...")
     holdings = fetch_positions()
     log.info("Fetched %d positions from OpenD", len(holdings))
