@@ -62,10 +62,20 @@ jobs:
           sed -i 's#filename="#filename="api/src/#' api/coverage.xml
           sed -i 's#filename="#filename="bot/src/#' bot/coverage.xml
 
-      - name: Upload coverage
+      - name: Upload API coverage
         uses: codecov/codecov-action@v5
         with:
-          files: api/coverage.xml,bot/coverage.xml
+          files: api/coverage.xml
+          flags: api
+          disable_search: true
+          fail_ci_if_error: false
+
+      - name: Upload bot coverage
+        uses: codecov/codecov-action@v5
+        with:
+          files: bot/coverage.xml
+          flags: bot
+          disable_search: true
           fail_ci_if_error: false
 
   shell:
