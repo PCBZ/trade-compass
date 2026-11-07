@@ -193,11 +193,13 @@ directly.
 
 ```bash
 cd api && pytest tests/ -v
-cd bot && pytest tests/unit -v --cov=src --cov-report=term-missing
+cd bot && pytest tests/unit tests/integration -v --cov=src --cov-report=term-missing
 ```
 
-Both suites run in CI with no network and no LLM call. The `bot/tests/test_*.py` files
-are **live integration tests** (real FMP, Gemini and REST APIs, a populated `bot/.env`),
+Both suites run in CI with no network and no LLM call. `bot/tests/integration` drives the
+real LLM client against a local fake Gemini endpoint, so the fallback is exercised over
+HTTP without a key. The `bot/tests/test_*.py` files
+are **live tests** (real FMP, Gemini and REST APIs, a populated `bot/.env`),
 so CI skips them; run them by hand when you change a data source, for example
 `python -m pytest bot/tests/test_fmp.py -v`.
 
