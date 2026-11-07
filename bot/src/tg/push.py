@@ -1,11 +1,12 @@
 """Active push notifications triggered by Cloud Scheduler.
 
-5 push types (all times ET / UTC):
-  pre_market   9:25 AM  / 13:25 UTC  — pre-open brief
-  morning      11:00 AM / 15:00 UTC  — mid-morning check
-  noon         12:30 PM / 16:30 UTC  — lunch update
-  afternoon    2:30 PM  / 18:30 UTC  — afternoon check
-  post_market  4:05 PM  / 20:05 UTC  — closing summary
+5 push types, scheduled in US Eastern time (Cloud Scheduler follows daylight
+saving, so these hold all year):
+  pre_market   9:25 AM  — pre-open brief
+  morning      11:00 AM — mid-morning check
+  noon         12:30 PM — lunch update
+  afternoon    2:30 PM  — afternoon check
+  post_market  4:05 PM  — closing summary
 
 Cloud Scheduler POSTs to /push with body: {"type": "pre_market"}
 TELEGRAM_CHAT_ID must be set in environment (your personal chat ID).

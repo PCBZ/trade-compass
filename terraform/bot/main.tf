@@ -239,20 +239,20 @@ resource "google_cloud_run_v2_service_iam_member" "public" {
 }
 
 # ── Cloud Scheduler: 5 daily push notifications ───────────────────────────────
-# All times in UTC (ET = UTC-4 in summer, UTC-5 in winter; using UTC-4 / EDT)
-# pre_market  09:25 ET → 13:25 UTC
-# morning     11:00 ET → 15:00 UTC
-# noon        12:30 ET → 16:30 UTC
-# afternoon   14:30 ET → 18:30 UTC
-# post_market 16:05 ET → 20:05 UTC
+# Times are US Eastern, so they follow the market through daylight saving.
+# pre_market  09:25  before the open
+# morning     11:00
+# noon        12:30
+# afternoon   14:30
+# post_market 16:05  after the close
 
 locals {
   push_schedules = {
-    pre_market  = "25 13 * * 1-5"
-    morning     = "0 15 * * 1-5"
-    noon        = "30 16 * * 1-5"
-    afternoon   = "30 18 * * 1-5"
-    post_market = "5 20 * * 1-5"
+    pre_market  = "25 9 * * 1-5"
+    morning     = "0 11 * * 1-5"
+    noon        = "30 12 * * 1-5"
+    afternoon   = "30 14 * * 1-5"
+    post_market = "5 16 * * 1-5"
   }
 }
 
@@ -262,7 +262,7 @@ resource "google_cloud_scheduler_job" "push" {
   name             = "trade-compass-push-${each.key}"
   description      = "trade-compass bot ${each.key} push"
   schedule         = each.value
-  time_zone        = "UTC"
+  time_zone        = "America/New_York"
   attempt_deadline = "180s"
 
   http_target {
