@@ -1,0 +1,28 @@
+# Coverage is scoped to the deterministic surface: pure functions with no network
+# and no LLM. I/O belongs to the live tests under tests/ (they cost tokens and
+# quota, so CI skips them); gating on whole-tree coverage would only reward
+# writing mocks for I/O.
+#
+# "Pure" is not "sync": fundamental_agent and sentiment_agent are async but make
+# no network call, so they stay in scope. Excluded functions are matched by name,
+# so a renamed one stops being excluded and its body counts again, which pulls the
+# total down instead of silently hiding it.
+
+[run]
+source = src
+omit =
+    # Telegram, FastAPI, graph wiring and the REST client: framework glue.
+    src/tg/*
+    src/main.py
+    src/graph/*
+    src/agents/data.py
+    src/tools/portfolio_api.py
+
+[report]
+exclude_also =
+    # Network fetches and the code that only exists to wrap them.
+    async def (_fetch|_get|fetch_quote|fetch_profile|fetch_key_metrics)\b
+    async def fetch_news\b
+    async def (_resolve_cik|fetch_fundamentals|_load_fundamentals)\b
+    # Fans out to the single-stock graph and the REST API.
+    async def portfolio_agent\b
