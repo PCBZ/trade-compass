@@ -196,7 +196,9 @@ cd api && pytest tests/ -v
 cd bot && pytest tests/unit tests/integration -v --cov=src --cov-report=term-missing
 ```
 
-Both suites run in CI with no network and no LLM call. `bot/tests/integration` drives the
+Both suites run in CI with no network and no LLM call. The bot's coverage is gated at
+90% over its deterministic code only (see `bot/.coveragerc`): I/O and framework glue are
+left out, since mocking them would only inflate the number. `bot/tests/integration` drives the
 real LLM client against a local fake Gemini endpoint, so the fallback is exercised over
 HTTP without a key. The `bot/tests/test_*.py` files
 are **live tests** (real FMP, Gemini and REST APIs, a populated `bot/.env`),
