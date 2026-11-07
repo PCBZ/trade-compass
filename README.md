@@ -3,40 +3,24 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/PCBZ/trade-compass/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/PCBZ/trade-compass/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/PCBZ/trade-compass/graph/badge.svg)](https://codecov.io/gh/PCBZ/trade-compass)
 [![Python](https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![LangGraph](https://img.shields.io/badge/LangGraph-0.2-1C3C3C?logo=langchain&logoColor=white)](https://langchain-ai.github.io/langgraph/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![Telegram](https://img.shields.io/badge/Telegram-Bot-26A5E4?logo=telegram&logoColor=white)](https://core.telegram.org/bots)
-[![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-47A248?logo=mongodb&logoColor=white)](https://www.mongodb.com/atlas)
-[![Terraform](https://img.shields.io/badge/Terraform-IaC-7B42BC?logo=terraform&logoColor=white)](https://www.terraform.io/)
-[![GCP](https://img.shields.io/badge/GCP-Cloud%20Run-4285F4?logo=googlecloud&logoColor=white)](https://cloud.google.com/run)
 [![License](https://img.shields.io/badge/License-Apache%202.0-D22128?logo=apache&logoColor=white)](LICENSE)
 
 A personal US-equity research assistant. It syncs your Moomoo/Futu positions, runs them
-through a LangGraph multi-agent pipeline, and delivers **BUY / HOLD / SELL** verdicts with
-reasoning — straight to Telegram.
+through a LangGraph multi-agent pipeline, and sends **BUY / HOLD / SELL** verdicts with
+reasoning to Telegram.
 
-> **It does not place orders.** trade-compass is read-only against your brokerage: it
-> fetches positions and produces analysis. Every trade stays a manual decision.
-> Nothing here is investment advice.
+> **It does not place orders.** It is read-only against your brokerage; every trade stays
+> a manual decision. Nothing here is investment advice.
 
-**Documentation lives in the [wiki](https://github.com/PCBZ/trade-compass/wiki)** —
-architecture, how the pipeline and the LLM layer work, and operations. This
-README is the quick start.
-
----
+More detail is in the [wiki](https://github.com/PCBZ/trade-compass/wiki): architecture, the pipeline, the LLM layer, operations.
 
 ## What it is
-
-Three deployable units, one database, all infrastructure in Terraform:
 
 | Unit | Runs on | Responsibility |
 |------|---------|----------------|
 | [`bot/`](bot/) | Cloud Run | LangGraph agents, Telegram webhook, scheduled pushes |
 | [`api/`](api/) | Cloud Run | FastAPI data layer over MongoDB (holdings, quotes, preferences, cache) |
 | [`sync/`](sync/) | Compute Engine | Moomoo OpenD client; cron-driven position and quote push |
-
-See [Architecture](https://github.com/PCBZ/trade-compass/wiki/Architecture) for the
-diagram and data flow.
 
 ## How the analysis works
 
@@ -71,11 +55,8 @@ graph TD;
 	classDef llm fill:#ffe3b3,stroke:#e08a1e,line-height:1.2
 ```
 
-The orange node calls an LLM; the purple ones are plain Python. Only `decision_agent`
-does, so one analysis costs one LLM call. Scores (Piotroski, Altman-Z) are computed from
-SEC filings, not inferred by the model. Details and the reasoning behind these choices
-are in [Analysis pipeline](https://github.com/PCBZ/trade-compass/wiki/Analysis-pipeline).
-Regenerate the diagram with `python bot/scripts/draw_graph.py --write`.
+The orange node is the only LLM call; the rest is plain Python. See
+[Analysis pipeline](https://github.com/PCBZ/trade-compass/wiki/Analysis-pipeline).
 
 ## Telegram commands
 
@@ -86,42 +67,22 @@ Regenerate the diagram with `python bot/scripts/draw_graph.py --write`.
 | `/model` | Inline keyboard to switch the analysis LLM |
 | `/help`, `/start` | Command list |
 
-Cloud Scheduler also triggers a portfolio sweep five times each weekday and sends it to
-your chat; see
-[Telegram commands and REST API](https://github.com/PCBZ/trade-compass/wiki/Telegram-commands-and-REST-API)
-for the schedule and the API routes.
-
----
-
 ## Deployment
 
-### Prerequisites
-
-- A GCP project with billing enabled, plus `gcloud` and `terraform` on your machine
-- A MongoDB Atlas account with an org ID and API key pair
-- A Moomoo/Futu account with US market data (OpenD needs real credentials)
-- API keys: [Telegram BotFather](https://t.me/botfather),
-  [Financial Modeling Prep](https://site.financialmodelingprep.com/),
-  [Gemini API](https://aistudio.google.com/apikey)
-- A contact email for `SEC_CONTACT`. SEC EDGAR and the Nasdaq RSS feed need no key,
-  but EDGAR rejects any request whose User-Agent carries no email address
+**You need:** a GCP project with billing (plus `gcloud` and `terraform`), a MongoDB Atlas
+account, a Moomoo/Futu account with US market data, and keys for
+[Telegram](https://t.me/botfather), [FMP](https://site.financialmodelingprep.com/) and
+[Gemini](https://aistudio.google.com/apikey).
 
 ### 1. Configure
 
 ```bash
-cp .env.example .env   # set GCP_PROJECT_ID
+cp .env.example .env           # set GCP_PROJECT_ID
+cp bot/.env.example bot/.env   # add your keys and SEC_CONTACT (an email, EDGAR requires one)
 ```
 
-Copy each `terraform.tfvars.example` to `terraform.tfvars` and fill in the values —
-Atlas needs `atlas_public_key`, `atlas_private_key`, `atlas_org_id`, and `db_password`;
-Compute Engine needs `ssh_allowed_ips`.
-
-Put your own keys in `bot/.env` (`cp bot/.env.example bot/.env`). The deploy script
-fills in `API_URL` and `API_KEY` for you and preserves anything already set, but
-`FMP_API_KEY`, `GEMINI_API_KEY`, `TELEGRAM_BOT_TOKEN`, and `TELEGRAM_CHAT_ID` are
-yours to supply. Get your chat ID by messaging [@userinfobot](https://t.me/userinfobot).
-The full variable list is in
-[Configuration](https://github.com/PCBZ/trade-compass/wiki/Configuration).
+Copy each `terraform.tfvars.example` to `terraform.tfvars` and fill it in. Every variable
+is listed in [Configuration](https://github.com/PCBZ/trade-compass/wiki/Configuration).
 
 ### 2. Deploy
 
@@ -129,108 +90,59 @@ The full variable list is in
 cd terraform && ./deploy.sh
 ```
 
-Eight ordered steps: tfstate bucket → VM (static IP first, so Atlas can allowlist it) →
-Atlas cluster → API on Cloud Run → write `bot/.env` → VM again with the resolved
-`api_url` → bot on Cloud Run → register the Telegram webhook. Cloud Run URLs and the
-generated API key are printed at the end.
-
-This is a one-time provision. After it, pushing a `v*` tag runs `terraform apply` via
-GitHub Actions; merging to `main` does not deploy. See
-[`docs/DEPLOY.md`](docs/DEPLOY.md) for the CI/CD setup and
-[Deployment and releases](https://github.com/PCBZ/trade-compass/wiki/Deployment-and-releases)
-for how it works. The VM and Atlas stay with `deploy.sh` by hand.
+This provisions everything once. After that, pushing a `v*` tag deploys through GitHub
+Actions; merging to `main` does not. See [`docs/DEPLOY.md`](docs/DEPLOY.md) and
+[Deployment and releases](https://github.com/PCBZ/trade-compass/wiki/Deployment-and-releases). A from-scratch run currently stops
+at step 1; do the first bootstrap apply by hand as
+[`docs/DEPLOY.md`](docs/DEPLOY.md#bootstrap-state) describes.
 
 ### 3. Finish the VM by hand
 
-OpenD needs interactive credentials, so the VM bootstrap stops short of starting it:
+OpenD needs your Moomoo login, so the bootstrap stops short of starting it:
 
 ```bash
 gcloud compute ssh trade-compass --zone us-west1-b
 ```
 
-Then on the VM, edit `OpenD.xml` with your Moomoo login (the bootstrap log prints the
-exact path), and:
+Edit `OpenD.xml` with your login, then:
 
 ```bash
 sudo systemctl start moomoo-opend && sudo bash /opt/trade-compass/sync/setup_cron.sh
 ```
 
-Cron then runs the sync every 5 minutes, 13:30–20:00 UTC, Mon–Fri, pushing both
-positions and an OpenD price snapshot. Logs land in `/var/log/trade-compass-sync.log`.
-
-**Do not skip `setup_cron.sh`.** The bootstrap never installs it, and nothing else
-will: without it holdings sit frozen at whatever was last pushed. Re-check
-`sudo crontab -l` after any VM recreate.
-
----
+**Do not skip `setup_cron.sh`.** Nothing else installs the cron, and without it holdings
+freeze at the last push. Re-check `sudo crontab -l` after any VM recreate.
 
 ## Local development
-
-Each unit has its own requirements file and its own virtualenv.
 
 ```bash
 python -m venv api/.venv && api/.venv/bin/pip install -r api/requirements-dev.txt
 python -m venv bot/.venv && bot/.venv/bin/pip install -r bot/requirements-dev.txt -r bot/requirements.txt
-```
 
-Run the API against a local or Atlas MongoDB:
-
-```bash
 cd api && API_KEY=dev MONGODB_URI=mongodb://localhost:27017 uvicorn src.main:app --reload
+cd bot && uvicorn src.main:app --reload --port 8081   # needs bot/.env
 ```
 
-Run the bot (needs `bot/.env` populated, including `SEC_CONTACT`):
-
-```bash
-cd bot && uvicorn src.main:app --reload --port 8081
-```
-
-Telegram delivers updates by webhook, so for local bot testing either expose port 8081
-through a tunnel and re-register the webhook, or POST an update payload to `/webhook`
-directly.
-
-### Tests
+Tests:
 
 ```bash
 cd api && pytest tests/ -v
 cd bot && pytest tests/unit tests/integration -v --cov=src --cov-report=term-missing
 ```
 
-Both suites run in CI with no network and no LLM call. The bot's coverage is gated at
-90% over its deterministic code only (see `bot/.coveragerc`): I/O and framework glue are
-left out, since mocking them would only inflate the number. `bot/tests/integration` drives the
-real LLM client against a local fake Gemini endpoint, so the fallback is exercised over
-HTTP without a key. The `bot/tests/test_*.py` files
-are **live tests** (real FMP, Gemini and REST APIs, a populated `bot/.env`),
-so CI skips them; run them by hand when you change a data source, for example
-`python -m pytest bot/tests/test_fmp.py -v`.
-
-[`ci.yml`](.github/workflows/ci.yml) runs on every push and pull request to `main`:
-lint, both unit suites, `terraform fmt` and `validate`, and ShellCheck.
-
----
+CI runs these offline. The `bot/tests/test_*.py` files call the real APIs and need a
+populated `bot/.env`, so run them by hand.
 
 ## Things to know
 
-- **FMP's free tier serves only a fixed allowlist of symbols.** A restricted symbol is
-  still analysed, but loses the FMP-only ratios.
-- **Nothing alerts when the sync stops.** If the VM's cron is missing, holdings go stale
-  silently; check `sudo crontab -l` and the sync log first.
 - **The API is public with key-only auth.** `X-API-Key` is the only barrier on the data
   layer; `/webhook` and `/push` are unauthenticated.
 - **Gemini free-tier prompts may be used by Google to improve its products**, and they
   contain your positions.
-- **A from-scratch `deploy.sh` currently stops at step 1**; run the first bootstrap
-  apply by hand as [`docs/DEPLOY.md`](docs/DEPLOY.md#bootstrap-state) describes.
 
-The rest, with the reasoning, is in
-[Known limits](https://github.com/PCBZ/trade-compass/wiki/Known-limits).
+The rest is in [Known limits](https://github.com/PCBZ/trade-compass/wiki/Known-limits).
 
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE).
-
-[DESIGN.md](DESIGN.md) and the wiki's
-[Proposal](https://github.com/PCBZ/trade-compass/wiki/Proposal) are the original design,
-written before the current data sources and pipeline; where they disagree with this README
-or the wiki, those are right.
+Apache 2.0, see [LICENSE](LICENSE). [DESIGN.md](DESIGN.md) is the original design and is
+out of date; the README and wiki win where they disagree.
