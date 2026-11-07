@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import pytest
 from mongomock_motor import AsyncMongoMockClient
+from pymongo.errors import DuplicateKeyError
 
 import database
 from main import app
@@ -57,6 +58,21 @@ async def test_lifespan_builds_a_client_and_ensures_indexes():
             assert "fetched_at_1" in info
 
     assert database._client is None
+
+
+async def test_decisions_are_unique_per_slot_in_the_database():
+    """The upsert keeps one verdict per slot; the index makes Mongo refuse a
+    second one even from a writer that skips the upsert."""
+    with patch.object(
+        database, "AsyncIOMotorClient", lambda uri: AsyncMongoMockClient()
+    ):
+        async with app.router.lifespan_context(app):
+            decisions = database.get_db().decisions
+            slot = {"trade_date": "2026-11-09", "run_type": "noon", "symbol": "MU"}
+            await decisions.insert_one({**slot, "verdict": "HOLD"})
+            with pytest.raises(DuplicateKeyError):
+                await decisions.insert_one({**slot, "verdict": "SELL"})
+            await decisions.insert_one({**slot, "run_type": "afternoon"})
 
 
 async def test_lifespan_fails_fast_on_missing_env(monkeypatch):
