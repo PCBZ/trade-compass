@@ -50,10 +50,33 @@ jobs:
         run: ruff format --check api/src/ bot/src/ sync/src/
 
       - name: Test
-        run: cd api && pytest tests/ -v
+        run: cd api && pytest tests/ -v --cov=src --cov-report=term-missing --cov-report=xml
 
       - name: Test bot units
-        run: cd bot && pytest tests/unit -v --cov=src --cov-report=term-missing
+        run: cd bot && pytest tests/unit -v --cov=src --cov-report=term-missing --cov-report=xml
+
+      # Both packages are named src/, so prefix each report's paths with its
+      # directory (the XML paths are relative to src/) or Codecov would merge api/src/main.py with bot/src/main.py.
+      - name: Prefix coverage paths
+        run: |
+          sed -i 's#filename="#filename="api/src/#' api/coverage.xml
+          sed -i 's#filename="#filename="bot/src/#' bot/coverage.xml
+
+      - name: Upload API coverage
+        uses: codecov/codecov-action@v5
+        with:
+          files: api/coverage.xml
+          flags: api
+          disable_search: true
+          fail_ci_if_error: false
+
+      - name: Upload bot coverage
+        uses: codecov/codecov-action@v5
+        with:
+          files: bot/coverage.xml
+          flags: bot
+          disable_search: true
+          fail_ci_if_error: false
 
   shell:
     name: Shell
