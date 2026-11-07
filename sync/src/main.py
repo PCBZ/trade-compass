@@ -65,13 +65,17 @@ def _trading_day_type(day: str) -> str | None:
     on the same outage anyway, and skipping a real trading day silently is the
     worse mistake.
     """
-    ctx = OpenQuoteContext(host=OPEND_HOST, port=OPEND_PORT)
     try:
-        ret, data = ctx.request_trading_days(
-            market=TradeDateMarket.US, start=day, end=day
-        )
-    finally:
-        ctx.close()
+        ctx = OpenQuoteContext(host=OPEND_HOST, port=OPEND_PORT)
+        try:
+            ret, data = ctx.request_trading_days(
+                market=TradeDateMarket.US, start=day, end=day
+            )
+        finally:
+            ctx.close()
+    except Exception as exc:  # noqa: BLE001 — same fail-open rule as an error reply
+        log.warning("trading-day lookup raised %r; assuming a full session", exc)
+        return "WHOLE"
     if ret != RET_OK:
         log.warning("request_trading_days failed: %s; assuming a full session", data)
         return "WHOLE"

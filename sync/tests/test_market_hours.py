@@ -8,6 +8,7 @@ what broke when daylight saving ended (#71).
 from __future__ import annotations
 
 import re
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -126,6 +127,16 @@ def test_trading_day_type(monkeypatch, reply, expected):
     assert main._trading_day_type("2026-11-09") == expected
 
 
+class _RaisingQuoteContext(_FakeQuoteContext):
+    def request_trading_days(self, market, start, end):
+        raise ConnectionError("OpenD went away")
+
+
+def test_a_lookup_that_raises_also_assumes_a_full_session(monkeypatch):
+    monkeypatch.setattr(main, "OpenQuoteContext", _RaisingQuoteContext)
+    assert main._trading_day_type("2026-11-09") == "WHOLE"
+
+
 # ── main() ────────────────────────────────────────────────────────────────────
 
 
@@ -162,6 +173,20 @@ def test_main_syncs_inside_the_session(monkeypatch):
     _freeze(monkeypatch, _utc(2026, 11, 9, 20, 30))  # 15:30 EST
     calls = []
     monkeypatch.setattr(main, "_trading_day_type", lambda day: "WHOLE")
+    monkeypatch.setattr(main, "fetch_positions", lambda: calls.append("f") or [])
+    monkeypatch.setattr(main, "annotate_security_types", lambda h: None)
+    monkeypatch.setattr(main, "push_holdings", lambda h: None)
+    monkeypatch.setattr(main, "fetch_quotes", lambda c: [])
+    monkeypatch.setattr(main, "push_quotes", lambda q: None)
+    main.main()
+    assert calls == ["f"]
+
+
+def test_force_syncs_off_hours_and_on_a_holiday(monkeypatch):
+    _freeze(monkeypatch, _utc(2026, 11, 26, 13, 30))  # Thanksgiving, 8:30 EST
+    monkeypatch.setattr(sys, "argv", ["main.py", "--force"])
+    calls = []
+    monkeypatch.setattr(main, "_trading_day_type", lambda day: None)
     monkeypatch.setattr(main, "fetch_positions", lambda: calls.append("f") or [])
     monkeypatch.setattr(main, "annotate_security_types", lambda h: None)
     monkeypatch.setattr(main, "push_holdings", lambda h: None)
