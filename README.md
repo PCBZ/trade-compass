@@ -14,6 +14,18 @@ reasoning to Telegram.
 
 More detail is in the [wiki](https://github.com/PCBZ/trade-compass/wiki): architecture, the pipeline, the LLM layer, operations.
 
+## Built with
+
+[![LangGraph](https://img.shields.io/badge/LangGraph-0.2-1C3C3C?logo=langgraph&logoColor=white)](https://github.com/langchain-ai/langgraph)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-47A248?logo=mongodb&logoColor=white)](https://www.mongodb.com/atlas)
+[![Gemini](https://img.shields.io/badge/Gemini-API-8E75B2?logo=googlegemini&logoColor=white)](https://ai.google.dev/)
+[![Telegram](https://img.shields.io/badge/Telegram-Bot-26A5E4?logo=telegram&logoColor=white)](https://core.telegram.org/bots)
+[![Moomoo](https://img.shields.io/badge/Moomoo-OpenD-FF6A00)](https://openapi.moomoo.com/)
+[![Google Cloud](https://img.shields.io/badge/Google_Cloud-Run_%7C_GCE-4285F4?logo=googlecloud&logoColor=white)](https://cloud.google.com/)
+[![Terraform](https://img.shields.io/badge/Terraform-IaC-844FBA?logo=terraform&logoColor=white)](https://www.terraform.io/)
+[![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-CI%2FCD-2088FF?logo=githubactions&logoColor=white)](https://github.com/features/actions)
+
 ## What it is
 
 | Unit | Runs on | Responsibility |
@@ -67,12 +79,34 @@ The orange node is the only LLM call; the rest is plain Python. See
 | `/model` | Inline keyboard to switch the analysis LLM |
 | `/help`, `/start` | Command list |
 
-## Deployment
+## Prerequisites
 
-**You need:** a GCP project with billing (plus `gcloud` and `terraform`), a MongoDB Atlas
-account, a Moomoo/Futu account with US market data, and keys for
-[Telegram](https://t.me/botfather), [FMP](https://site.financialmodelingprep.com/) and
-[Gemini](https://aistudio.google.com/apikey).
+| | Requirement | Used for |
+|---|---|---|
+| <img src="https://cdn.simpleicons.org/googlecloud" width="16"> | GCP project with billing, plus the `gcloud` CLI | Cloud Run, the e2-micro VM, Cloud Scheduler, Secret Manager |
+| <img src="https://cdn.simpleicons.org/terraform" width="16"> | `terraform` CLI | provisions everything |
+| <img src="https://cdn.simpleicons.org/mongodb" width="16"> | MongoDB Atlas account and an org API key | the free M0 cluster, created by Terraform |
+| 🐂 | Moomoo/Futu account with US market data | OpenD on the VM reads positions and quotes |
+| <img src="https://cdn.simpleicons.org/telegram" width="16"> | Bot token from [@BotFather](https://t.me/botfather), your chat ID | commands and pushes |
+| <img src="https://cdn.simpleicons.org/googlegemini" width="16"> | [Gemini API key](https://aistudio.google.com/apikey) (free tier works) | the decision LLM |
+| 📈 | [FMP API key](https://site.financialmodelingprep.com/) | quotes, profile, key metrics |
+| 🏛️ | A contact email | SEC EDGAR fundamentals (it returns 403 without one) |
+| <img src="https://cdn.simpleicons.org/python" width="16"> | Python 3.14 | local development and tests only |
+
+Nasdaq news is read from its public RSS feed and needs no key.
+
+## Dependencies
+
+| Unit | Runtime | Main packages |
+|---|---|---|
+| `api/` | Python 3.14 (Cloud Run image) | FastAPI 0.115, Uvicorn 0.32, Motor 3.6 |
+| `bot/` | Python 3.14 (Cloud Run image) | LangGraph 0.2, langchain-openai 0.2 (Gemini through its OpenAI-compatible endpoint), python-telegram-bot 21.6, httpx 0.27 |
+| `sync/` | Python 3.12 (Ubuntu 24.04 VM) | futu-api 9.4, httpx 0.27, plus Moomoo OpenD 10.7 |
+
+Exact pins are in each unit's `requirements.txt`; test tools are in `api/` and `bot/`'s
+`requirements-dev.txt`.
+
+## Deployment
 
 ### 1. Configure
 
