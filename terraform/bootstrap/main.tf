@@ -64,6 +64,7 @@ resource "google_project_iam_member" "deployer" {
     "artifactregistry.admin",
     "bigquery.admin", # create the eval dataset, set its IAM
     "cloudbuild.builds.editor",
+    "cloudscheduler.admin", # update the push jobs (they predate CD)
     "iam.serviceAccountAdmin",
     "iam.serviceAccountUser",
     "logging.configWriter", # create the decision log sink
