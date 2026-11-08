@@ -58,7 +58,9 @@ async def _store_decision(record: dict[str, Any]) -> None:
     try:
         await put_decision(record)
     except Exception as exc:  # noqa: BLE001 — storing must not break analysis
-        log.warning(
+        # ERROR, not WARNING: unlike a cache miss, a lost record can't be
+        # recovered, and the paper-trading experiment silently misses a signal.
+        log.error(
             "Could not store %s verdict for %s: %s",
             record["run_type"],
             record["symbol"],
@@ -187,9 +189,8 @@ async def portfolio_agent(state: AnalysisState) -> dict:
         # Stored now, not after the loop, so a sweep cut off by the request
         # deadline keeps every verdict it finished.
         if run_type := state.get("run_type"):
-            now = datetime.now(UTC)
             await _store_decision(
-                _decision_record(holding, verdicts[-1], run_type, now)
+                _decision_record(holding, verdicts[-1], run_type, datetime.now(UTC))
             )
 
     max_position_size = preferences.get("max_position_size", 0.1)

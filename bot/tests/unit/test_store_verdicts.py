@@ -138,7 +138,7 @@ async def test_store_failure_is_logged_not_raised(monkeypatch, caplog):
         raise RuntimeError("API down")
 
     monkeypatch.setattr(portfolio, "put_decision", put)
-    with caplog.at_level(logging.WARNING, logger=portfolio.__name__):
+    with caplog.at_level(logging.ERROR, logger=portfolio.__name__):
         await _store_decision({"symbol": "AAA", "run_type": "noon"})
 
     assert "noon verdict for AAA" in caplog.text
