@@ -67,12 +67,26 @@ async def test_decisions_are_unique_per_slot_in_the_database():
         database, "AsyncIOMotorClient", lambda uri: AsyncMongoMockClient()
     ):
         async with app.router.lifespan_context(app):
-            decisions = database.get_db().decisions
+            verdicts = database.get_db().verdicts
             slot = {"trade_date": "2026-11-09", "run_type": "noon", "symbol": "MU"}
-            await decisions.insert_one({**slot, "verdict": "HOLD"})
+            await verdicts.insert_one({**slot, "verdict": "HOLD"})
             with pytest.raises(DuplicateKeyError):
-                await decisions.insert_one({**slot, "verdict": "SELL"})
-            await decisions.insert_one({**slot, "run_type": "afternoon"})
+                await verdicts.insert_one({**slot, "verdict": "SELL"})
+            await verdicts.insert_one({**slot, "run_type": "afternoon"})
+
+
+async def test_legacy_decisions_collection_does_not_block_startup():
+    """The cluster may hold a `decisions` collection from the original design.
+    Its documents have no trade_date, run_type or symbol, so a unique index
+    over those fields there would see duplicate (null, null, null) keys."""
+    mock = AsyncMongoMockClient()
+    legacy = mock[database._DB_NAME].decisions
+    await legacy.insert_many([{"ticker": "A", "verdict": "BUY"}, {"ticker": "B"}])
+
+    with patch.object(database, "AsyncIOMotorClient", lambda uri: mock):
+        async with app.router.lifespan_context(app):
+            assert await legacy.count_documents({}) == 2
+            assert list(await legacy.index_information()) == ["_id_"]
 
 
 async def test_lifespan_fails_fast_on_missing_env(monkeypatch):
