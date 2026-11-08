@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 SecurityType = Literal["STOCK", "ETF", "FUND", "BOND", "WARRANT", "FUTURE", "NONE"]
 RunType = Literal["pre_market", "morning", "noon", "afternoon", "post_market"]
@@ -174,6 +174,98 @@ class Decision(BaseModel):
     def _upper(cls, v: str) -> str:
         # Uniqueness is on the symbol, so "mu" and "MU" must be one record.
         return v.strip().upper()
+
+
+class SeedPosition(BaseModel):
+    """One real position at the start of a paper-trading experiment."""
+
+    symbol: str = Field(description="Ticker symbol; stored upper-case")
+    security_type: SecurityType = Field(description="Futu security type")
+    qty: float = Field(description="Shares held in the real accounts at the seed")
+    price: float | None = Field(
+        default=None, description="Market value / qty at the seed; None if unknown"
+    )
+    mirrored_qty: int = Field(
+        default=0, ge=0, description="Whole shares bought in the simulated account"
+    )
+    fill_price: float | None = Field(
+        default=None, description="Average fill price of the mirroring buy"
+    )
+    order_id: str | None = Field(
+        default=None, description="Simulated-account order that mirrored it"
+    )
+    note: str = Field(default="", description="Why it was not fully mirrored")
+
+    @field_validator("symbol")
+    @classmethod
+    def _upper(cls, v: str) -> str:
+        return v.strip().upper()
+
+
+class Experiment(BaseModel):
+    """A paper-trading experiment: its seed and its own cash record.
+
+    The simulated account holds about USD 1M of play money, so the experiment
+    keeps its own cash, starting at the real accounts' USD cash. Only one
+    experiment is current at a time; retired ones are kept for reference.
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "experiment_id": "3f9c2a7e5b1d4c08",
+                "status": "active",
+                "seeded_on": "2026-11-09",
+                "seeded_at": "2026-11-09T15:12:40Z",
+                "seed_cash": 2500.0,
+                "cash": 2500.0,
+                "positions": [
+                    {
+                        "symbol": "MU",
+                        "security_type": "STOCK",
+                        "qty": 12.0,
+                        "price": 961.58,
+                        "mirrored_qty": 12,
+                        "fill_price": 961.9,
+                        "order_id": "8812301",
+                        "note": "",
+                    }
+                ],
+            }
+        }
+    )
+
+    experiment_id: str = Field(
+        pattern=r"^[A-Za-z0-9_-]{1,64}$", description="Chosen by the seeder"
+    )
+    status: Literal["seeding", "active"] = Field(
+        default="seeding",
+        description="seeding until the mirroring buys are recorded, then active",
+    )
+    seeded_on: str = Field(
+        pattern=r"^\d{4}-\d{2}-\d{2}$", description="US Eastern date of the seed"
+    )
+    seeded_at: datetime = Field(description="When seeding started (UTC)")
+    seed_cash: float = Field(ge=0, description="Real accounts' USD cash at the seed")
+    cash: float | None = Field(
+        default=None,
+        description="The experiment's own cash; starts at seed_cash when omitted",
+    )
+    positions: list[SeedPosition] = Field(default=[])
+
+    @field_validator("experiment_id")
+    @classmethod
+    def _not_the_slot_name(cls, v: str) -> str:
+        # A retired experiment's storage slot is its id; "current" is taken.
+        if v == "current":
+            raise ValueError("'current' is reserved")
+        return v
+
+    @model_validator(mode="after")
+    def _cash_starts_at_seed(self) -> "Experiment":
+        if self.cash is None:
+            self.cash = self.seed_cash
+        return self
 
 
 class Preferences(BaseModel):
