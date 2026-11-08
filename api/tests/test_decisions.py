@@ -1,5 +1,6 @@
 import pytest
 
+import database
 from tests.conftest import HEADERS
 
 _DAY = "2026-11-09"
@@ -46,6 +47,15 @@ async def test_put_then_list(client):
         "decided_at": doc["decided_at"],  # serialised form is Mongo's, not ours
     }
     assert doc["decided_at"].startswith("2026-11-09T16:03:12")
+
+
+@pytest.mark.asyncio
+async def test_records_live_in_verdicts_not_the_legacy_collection(client):
+    await _put(client)
+
+    db = database.get_db()
+    assert await db.verdicts.count_documents({}) == 1
+    assert await db.decisions.count_documents({}) == 0
 
 
 @pytest.mark.asyncio

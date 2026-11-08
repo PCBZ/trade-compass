@@ -51,6 +51,10 @@ async def _ensure_indexes(db: AsyncIOMotorDatabase):
         "fetched_at", expireAfterSeconds=_CACHE_PURGE_SECONDS
     )
     # One verdict per slot, enforced by Mongo, not just by the upsert.
-    await db.decisions.create_index(
+    # Served at /decisions but stored in `verdicts`: the cluster may still hold
+    # a legacy `decisions` collection from the original design, and its
+    # documents lack these fields, so building this index there could fail
+    # and stop the API from starting.
+    await db.verdicts.create_index(
         [("trade_date", 1), ("run_type", 1), ("symbol", 1)], unique=True
     )

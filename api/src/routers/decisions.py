@@ -34,9 +34,7 @@ async def list_decisions(
     if run_type is not None:
         query["run_type"] = run_type
     db = get_db()
-    return (
-        await db.decisions.find(query, {"_id": 0}).sort("decided_at", 1).to_list(None)
-    )
+    return await db.verdicts.find(query, {"_id": 0}).sort("decided_at", 1).to_list(None)
 
 
 @router.put(
@@ -51,5 +49,5 @@ async def put_decision(decision: Decision):
         "run_type": decision.run_type,
         "symbol": decision.symbol,
     }
-    await db.decisions.replace_one(slot, decision.model_dump(), upsert=True)
+    await db.verdicts.replace_one(slot, decision.model_dump(), upsert=True)
     return {"stored": 1}
