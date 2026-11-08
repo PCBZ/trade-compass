@@ -98,6 +98,7 @@ async def portfolio_agent(state: AnalysisState) -> dict:
                     "ticker": ticker,
                     "mode": "single",
                     "preferences": preferences,
+                    "run_type": state.get("run_type"),
                     "raw_data": {},
                     "holdings": [],
                     "fundamental_analysis": {},
