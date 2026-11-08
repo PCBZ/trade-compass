@@ -62,6 +62,20 @@ async def get_cache_entry(key: str) -> dict[str, Any]:
         return resp.json()
 
 
+async def put_decision(record: dict[str, Any]) -> None:
+    """PUT /decisions — store one scheduled verdict, replacing any earlier one
+    for the same date, run and stock.
+
+    The timeout is shorter than the reads': the sweep waits on this write, and
+    a slow API must not hold up the Telegram message.
+    """
+    async with httpx.AsyncClient() as client:
+        resp = await client.put(
+            f"{_API_URL}/decisions", json=record, headers=_headers(), timeout=5
+        )
+        resp.raise_for_status()
+
+
 async def put_cache_entry(key: str, payload: Any, expires_at: datetime) -> None:
     """PUT /cache — store or replace the entry for `key`."""
     async with httpx.AsyncClient() as client:
