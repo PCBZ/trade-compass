@@ -6,6 +6,7 @@ from fastapi import Depends, FastAPI
 from auth import require_api_key
 from database import lifespan
 from routers.cache import router as cache_router
+from routers.decisions import router as decisions_router
 from routers.holdings import router as holdings_router
 from routers.preferences import router as preferences_router
 from routers.quotes import router as quotes_router
@@ -30,6 +31,7 @@ app.include_router(holdings_router, dependencies=[Depends(require_api_key)])
 app.include_router(preferences_router, dependencies=[Depends(require_api_key)])
 app.include_router(quotes_router, dependencies=[Depends(require_api_key)])
 app.include_router(cache_router, dependencies=[Depends(require_api_key)])
+app.include_router(decisions_router, dependencies=[Depends(require_api_key)])
 
 
 @app.get("/health")

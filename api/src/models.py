@@ -1,9 +1,10 @@
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 SecurityType = Literal["STOCK", "ETF", "FUND", "BOND", "WARRANT", "FUTURE", "NONE"]
+RunType = Literal["pre_market", "morning", "noon", "afternoon", "post_market"]
 
 
 class Holding(BaseModel):
@@ -121,6 +122,58 @@ class CacheEntry(BaseModel):
         description="When the payload was retrieved (UTC)",
     )
     expires_at: datetime = Field(description="When the payload stops being fresh (UTC)")
+
+
+class Decision(BaseModel):
+    """One verdict from a scheduled sweep, kept for the paper-trading executor.
+
+    There is at most one per (trade_date, run_type, symbol): Cloud Scheduler
+    retries a sweep that was cut off, and the retry's verdict replaces the
+    first one rather than sitting beside it.
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "symbol": "MU",
+                "trade_date": "2026-11-09",
+                "run_type": "morning",
+                "verdict": "BUY",
+                "confidence": "high",
+                "stop_loss": 880.0,
+                "target_price": 1150.0,
+                "price": 961.58,
+                "thesis": "Memory pricing is turning up while the stock trades ...",
+                "decided_at": "2026-11-09T16:03:12Z",
+            }
+        }
+    )
+
+    symbol: str = Field(description="Ticker symbol, e.g. MU; stored upper-case")
+    trade_date: str = Field(
+        pattern=r"^\d{4}-\d{2}-\d{2}$",
+        description="US Eastern trading date, YYYY-MM-DD",
+    )
+    run_type: RunType = Field(description="Which scheduled push produced it")
+    verdict: Literal["BUY", "HOLD", "SELL", "INSUFFICIENT_DATA"]
+    confidence: Literal["low", "medium", "medium-high", "high"]
+    stop_loss: float | None = Field(default=None, description="Suggested stop-loss")
+    target_price: float | None = Field(default=None, description="12-month target")
+    price: float | None = Field(
+        default=None,
+        description="Price when decided (market value / qty); None if unknown",
+    )
+    thesis: str = Field(default="", description="The model's reasoning")
+    decided_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="When the verdict was produced (UTC)",
+    )
+
+    @field_validator("symbol")
+    @classmethod
+    def _upper(cls, v: str) -> str:
+        # Uniqueness is on the symbol, so "mu" and "MU" must be one record.
+        return v.strip().upper()
 
 
 class Preferences(BaseModel):
