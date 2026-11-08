@@ -4,13 +4,68 @@ Filters out ETF, BOND, FUND, WARRANT, FUTURE positions.
 Runs the single-stock subgraph sequentially per holding (avoids overwhelming
 the FMP free-tier rate limit with concurrent bursts).
 Detects concentration risk based on user preferences.
+
+A scheduled sweep (run_type set) also stores each holding's verdict through
+the API as soon as it is produced, for the paper-trading experiment (#70).
 """
 
-from ..state import AnalysisState
-from ..tools.portfolio_api import get_preferences
+import logging
+from datetime import UTC, datetime
+from typing import Any
+from zoneinfo import ZoneInfo
 
+from ..state import AnalysisState
+from ..tools.portfolio_api import get_preferences, put_decision
+
+log = logging.getLogger(__name__)
 
 _STOCK_TYPE = "STOCK"
+_ET = ZoneInfo("America/New_York")
+
+
+# ── Verdict records ───────────────────────────────────────────────────────────
+
+
+def _decision_record(
+    holding: dict, verdict: dict, run_type: str, now: datetime
+) -> dict[str, Any]:
+    """Build the stored record for one holding's verdict.
+
+    The trading date is the US Eastern date, so a post-market run is filed
+    under the session it follows rather than under the next UTC day. The
+    price is the holding's value per share at sync time, None when either
+    number is missing or the quantity is zero.
+    """
+    qty = holding.get("qty")
+    value = holding.get("market_value")
+    price = value / qty if qty and value is not None else None
+    return {
+        "symbol": verdict["ticker"],
+        "trade_date": now.astimezone(_ET).date().isoformat(),
+        "run_type": run_type,
+        "verdict": verdict["verdict"],
+        "confidence": verdict["confidence"],
+        "stop_loss": verdict.get("stop_loss"),
+        "target_price": verdict.get("target_price"),
+        "price": price,
+        "thesis": verdict.get("thesis", ""),
+        "decided_at": now.isoformat(),
+    }
+
+
+async def _store_decision(record: dict[str, Any]) -> None:
+    """Write one record; a failure is logged and never reaches the sweep."""
+    try:
+        await put_decision(record)
+    except Exception as exc:  # noqa: BLE001 — storing must not break analysis
+        # ERROR, not WARNING: unlike a cache miss, a lost record can't be
+        # recovered, and the paper-trading experiment silently misses a signal.
+        log.error(
+            "Could not store %s verdict for %s: %s",
+            record["run_type"],
+            record["symbol"],
+            exc,
+        )
 
 
 # ── Concentration risk ────────────────────────────────────────────────────────
@@ -129,6 +184,13 @@ async def portfolio_agent(state: AnalysisState) -> dict:
                     "confidence": "low",
                     "thesis": f"Analysis failed: {exc}",
                 }
+            )
+
+        # Stored now, not after the loop, so a sweep cut off by the request
+        # deadline keeps every verdict it finished.
+        if run_type := state.get("run_type"):
+            await _store_decision(
+                _decision_record(holding, verdicts[-1], run_type, datetime.now(UTC))
             )
 
     max_position_size = preferences.get("max_position_size", 0.1)
