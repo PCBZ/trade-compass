@@ -6,6 +6,10 @@ from typing_extensions import TypedDict
 
 Verdict = Literal["BUY", "HOLD", "SELL", "INSUFFICIENT_DATA"]
 
+# The scheduled pushes, as Cloud Scheduler names them. The API's decision
+# records accept exactly these values.
+RunType = Literal["pre_market", "morning", "noon", "afternoon", "post_market"]
+
 
 class Position(TypedDict):
     ticker: str
@@ -41,7 +45,7 @@ class AnalysisState(TypedDict):
     Single source of truth passed through every graph node.
 
     Populated incrementally:
-      - Orchestrator edge sets: ticker, mode, preferences
+      - Orchestrator edge sets: ticker, mode, preferences, run_type
       - data_agent sets:        raw_data, holdings
       - fundamental_agent sets: fundamental_analysis
       - sentiment_agent sets:   sentiment_analysis
@@ -53,6 +57,9 @@ class AnalysisState(TypedDict):
     ticker: Optional[str]  # None when mode == "portfolio"
     mode: Literal["single", "portfolio"]
     preferences: dict[str, Any]  # {style, horizon, risk}
+    # Which scheduled push started this run. None for a Telegram command:
+    # those are questions, not instructions to trade, so they are not stored.
+    run_type: Optional[RunType]
 
     # ── Data layer ────────────────────────────────────────────────
     raw_data: dict[str, Any]  # FMP + EDGAR + Nasdaq RSS + OpenD snapshot

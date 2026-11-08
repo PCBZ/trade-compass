@@ -76,13 +76,17 @@ def _format_portfolio_summary(summary: dict) -> str:
     return "\n".join(lines)
 
 
-async def _get_initial_state(ticker: str | None, mode: str) -> dict:
+async def _get_initial_state(
+    ticker: str | None, mode: str, run_type: str | None = None
+) -> dict:
+    """Build the graph input. run_type is set only by a scheduled push."""
     preferences = await get_preferences()
     holdings = await get_holdings()
     return {
         "ticker": ticker,
         "mode": mode,
         "preferences": preferences,
+        "run_type": run_type,
         "holdings": holdings,
         "raw_data": {},
         "fundamental_analysis": {},

@@ -52,7 +52,7 @@ async def push(request: Request, body: PushRequest) -> dict:
             status_code=500, detail="TELEGRAM_CHAT_ID or TELEGRAM_BOT_TOKEN not set"
         )
 
-    state = await _get_initial_state(None, "portfolio")
+    state = await _get_initial_state(None, "portfolio", run_type=body.type)
     result = await graph.ainvoke(state)
 
     summary = result.get("portfolio_summary") or {}
