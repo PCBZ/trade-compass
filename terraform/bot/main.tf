@@ -145,6 +145,12 @@ resource "google_cloud_run_v2_service" "bot" {
   template {
     service_account = google_service_account.bot.email
 
+    # A scheduled push runs the whole portfolio sweep inside its request. With
+    # the slower Gemini models a holding can take minutes, and the default 300 s
+    # cut every push on 2026-11-09 off before its message was sent. Matches the
+    # Scheduler's attempt_deadline below.
+    timeout = "1800s"
+
     containers {
       image = local.image
 
@@ -256,6 +262,9 @@ locals {
   }
 }
 
+# attempt_deadline is Cloud Scheduler's maximum for HTTP targets and equals the
+# bot's request timeout, so the Scheduler does not give up (and retry) on a
+# sweep that is still running.
 resource "google_cloud_scheduler_job" "push" {
   for_each = local.push_schedules
 
@@ -263,7 +272,7 @@ resource "google_cloud_scheduler_job" "push" {
   description      = "trade-compass bot ${each.key} push"
   schedule         = each.value
   time_zone        = "America/New_York"
-  attempt_deadline = "180s"
+  attempt_deadline = "1800s"
 
   http_target {
     http_method = "POST"
