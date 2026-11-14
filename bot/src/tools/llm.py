@@ -53,9 +53,19 @@ def get_llm(
 
 
 def _fallback_order(preferred: str | None) -> list[str]:
-    """Preferred model first, then every other configured one."""
+    """Preferred model first, then every other configured one.
+
+    A preferred model that is not configured is dropped, not tried: the saved
+    preference can outlive the provider it was chosen for (an OpenRouter model
+    survived the move to Gemini and 404'd on every call), so only the models in
+    config.json are ever asked.
+    """
+    ids = get_model_ids()
+    if preferred and preferred not in ids:
+        log.info("ignoring saved model %s: not configured", preferred)
+        preferred = None
     preferred = preferred or get_default_model_id()
-    return [preferred] + [m for m in get_model_ids() if m != preferred]
+    return [preferred] + [m for m in ids if m != preferred]
 
 
 async def ainvoke_with_fallback(
