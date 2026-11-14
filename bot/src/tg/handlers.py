@@ -190,20 +190,22 @@ async def handle_model_selection(
     api_key = os.environ.get("API_KEY", "")
     try:
         async with httpx.AsyncClient() as client:
-            prefs = (
-                await client.get(
-                    f"{api_url}/preferences",
-                    headers={"X-API-Key": api_key},
-                    timeout=10,
-                )
-            ).json()
+            resp = await client.get(
+                f"{api_url}/preferences",
+                headers={"X-API-Key": api_key},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            prefs = resp.json()
             prefs["llm_model"] = model_id
-            await client.put(
+            # Only a confirmed save counts: a rejected PUT used to report success.
+            resp = await client.put(
                 f"{api_url}/preferences",
                 json=prefs,
                 headers={"X-API-Key": api_key},
                 timeout=10,
             )
+            resp.raise_for_status()
     except Exception as exc:  # noqa: BLE001
         await query.edit_message_text(f"❌ Failed to save model: {exc}")
         return
