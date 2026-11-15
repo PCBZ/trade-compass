@@ -118,6 +118,44 @@ async def test_put_cannot_replace_a_different_experiment(client):
 
 
 @pytest.mark.asyncio
+async def test_put_after_a_retire_changes_nothing(client):
+    """The seeder's final record must not land on a retired or newer experiment."""
+    await _create(client)
+    await client.post("/experiment/retire", headers=HEADERS)
+    await _create(client, experiment_id="exp2", seed_cash=1.0)
+
+    r = await client.put(
+        "/experiment", json=_experiment(status="active"), headers=HEADERS
+    )
+    assert r.status_code == 409
+    doc = (await _get(client)).json()
+    assert (doc["experiment_id"], doc["seed_cash"]) == ("exp2", 1.0)
+    old = await database.get_db().experiments.find_one({"experiment_id": "exp1"})
+    assert old["status"] == "retired"
+
+
+@pytest.mark.asyncio
+async def test_retire_leaves_an_experiment_that_replaced_the_one_it_read(
+    client, monkeypatch
+):
+    """Retire reads, then writes; a new experiment in between must survive."""
+    from routers import experiment as router
+
+    await _create(client, experiment_id="exp2")
+
+    async def stale_read():
+        return {"experiment_id": "exp1"}
+
+    monkeypatch.setattr(router, "_current_or_404", stale_read)
+    r = await client.post("/experiment/retire", headers=HEADERS)
+
+    assert r.status_code == 409
+    monkeypatch.undo()
+    doc = (await _get(client)).json()
+    assert (doc["experiment_id"], doc["status"]) == ("exp2", "seeding")
+
+
+@pytest.mark.asyncio
 async def test_retire_keeps_the_record_and_frees_the_slot(client):
     await _create(client)
     r = await client.post("/experiment/retire", headers=HEADERS)

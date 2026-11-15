@@ -16,6 +16,7 @@ _HIDDEN = {"_id": 0, "slot": 0}
 
 
 async def _current_or_404() -> dict:
+    """The current experiment's record, or a 404 if there is none."""
     doc = await get_db().experiments.find_one(_CURRENT, _HIDDEN)
     if doc is None:
         raise HTTPException(status_code=404, detail="No current experiment")
@@ -45,16 +46,21 @@ async def create_experiment(experiment: Experiment):
 
 @router.put("", response_model=Experiment)
 async def put_experiment(experiment: Experiment):
-    """Replace the current experiment's record, e.g. once seeding has finished."""
-    current = await _current_or_404()
-    if current["experiment_id"] != experiment.experiment_id:
+    """Replace the current experiment's record, e.g. once seeding has finished.
+
+    The id is part of the filter, so the replace and the check are one step: a
+    retire, or a new experiment, landing in between cannot be overwritten.
+    """
+    result = await get_db().experiments.replace_one(
+        {**_CURRENT, "experiment_id": experiment.experiment_id},
+        {**experiment.model_dump(), **_CURRENT},
+    )
+    if result.matched_count == 0:
+        current = await _current_or_404()
         raise HTTPException(
             status_code=409,
             detail=f"Current experiment is {current['experiment_id']}",
         )
-    await get_db().experiments.replace_one(
-        _CURRENT, {**experiment.model_dump(), **_CURRENT}
-    )
     return experiment
 
 
@@ -62,8 +68,9 @@ async def put_experiment(experiment: Experiment):
 async def retire_experiment():
     """Retire the current experiment, keeping its record for reference."""
     current = await _current_or_404()
-    await get_db().experiments.update_one(
-        _CURRENT,
+    result = await get_db().experiments.update_one(
+        # Only the experiment just read: one that replaced it meanwhile stays.
+        {**_CURRENT, "experiment_id": current["experiment_id"]},
         {
             "$set": {
                 "slot": current["experiment_id"],
@@ -72,4 +79,9 @@ async def retire_experiment():
             }
         },
     )
+    if result.matched_count == 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Experiment {current['experiment_id']} is no longer current",
+        )
     return {"retired": current["experiment_id"]}

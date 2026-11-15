@@ -119,6 +119,19 @@ def test_every_simulated_call_names_the_simulated_environment():
     assert {kw["acc_id"] for _, kw in ctx.calls} == {9}
 
 
+def test_positions_and_orders_are_read_fresh_not_from_the_cache():
+    """A stale cache could pass the empty-account check or hide a fill."""
+    ctx = FakeTradeContext()
+    account = SimulatedAccount(ctx)
+    account.positions()
+    account.open_orders()
+    account.orders({"1"})
+
+    reads = _sent(ctx, "position_list_query") + _sent(ctx, "order_list_query")
+    assert len(reads) == 3
+    assert all(kw.get("refresh_cache") is True for kw in reads)
+
+
 def test_positions_skip_closed_ones():
     positions = pd.DataFrame(
         [{"code": "US.MU", "qty": 12.0}, {"code": "US.NVDA", "qty": 0.0}]

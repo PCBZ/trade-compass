@@ -226,6 +226,31 @@ def test_an_order_still_open_leaves_the_experiment_seeding():
     assert log[-1] == ("put", "seeding")
 
 
+def test_waiting_for_fills_stays_within_the_order_read_limit():
+    """OpenD allows 10 fresh order reads per 30 s, the open-order check included."""
+    clock = [0.0]
+    reads = []
+
+    class Timed(FakeAccount):
+        def open_orders(self):
+            reads.append(clock[0])
+            return super().open_orders()
+
+        def orders(self, order_ids):
+            reads.append(clock[0])
+            return super().orders(order_ids)
+
+    def sleep(seconds):
+        clock[0] += seconds
+
+    log = []
+    account = Timed(log, fills={"MU": ("SUBMITTED", 0)})  # never fills: worst case
+    seed.seed(FakeApi(log=log), account, _HOLDINGS, 2500.0, _NOW, sleep=sleep)
+
+    assert clock[0] == seed._FILL_WAIT_S
+    assert max(sum(t <= r < t + 30 for r in reads) for t in reads) <= 10
+
+
 def test_a_crash_while_mirroring_still_records_the_seed():
     log = []
 

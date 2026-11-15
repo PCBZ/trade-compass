@@ -33,7 +33,9 @@ log = logging.getLogger("seed")
 # recorded with a note but left out of the experiment.
 _MIRRORED_TYPES = frozenset({"STOCK", "ETF"})
 _FILL_WAIT_S = 60
-_POLL_S = 2
+# Fresh order reads are limited to 10 per 30 s; every 5 s stays well under it,
+# counting the open-order check just before the buys.
+_POLL_S = 5
 
 
 class SeedRefused(Exception):
@@ -44,9 +46,11 @@ class ExperimentApi:
     """The API's /experiment endpoints."""
 
     def __init__(self, client: httpx.Client):
+        """`client` carries the API's base URL and key."""
         self._client = client
 
     def get(self) -> dict | None:
+        """The current experiment, or None if there is none."""
         r = self._client.get("/experiment")
         if r.status_code == 404:
             return None
@@ -54,16 +58,20 @@ class ExperimentApi:
         return r.json()
 
     def create(self, experiment: dict) -> None:
+        """Record a new experiment; the API refuses one while another is current."""
         self._client.post("/experiment", json=experiment).raise_for_status()
 
     def put(self, experiment: dict) -> None:
+        """Replace the current experiment's record."""
         self._client.put("/experiment", json=experiment).raise_for_status()
 
     def retire(self) -> None:
+        """Retire the current experiment, keeping its record."""
         self._client.post("/experiment/retire").raise_for_status()
 
 
 def _whole_shares(position: dict) -> int:
+    """Shares to buy in the simulated account: whole shares of mirrored types."""
     if position["security_type"] not in _MIRRORED_TYPES:
         return 0
     return math.floor(position["qty"])
@@ -71,27 +79,26 @@ def _whole_shares(position: dict) -> int:
 
 def plan(holdings: list[dict]) -> list[dict]:
     """The seed record's positions, before anything is bought."""
-    positions = []
-    for h in holdings:
-        qty = h["qty"]
-        if qty <= 0:
-            continue
-        position = {
-            "symbol": h["symbol"],
-            "security_type": h["security_type"],
-            "qty": qty,
-            "price": h["market_value"] / qty,
-            "mirrored_qty": 0,
-            "fill_price": None,
-            "order_id": None,
-            "note": "",
-        }
-        if h["security_type"] not in _MIRRORED_TYPES:
-            position["note"] = f"not mirrored: {h['security_type']}"
-        elif _whole_shares(position) < 1:
-            position["note"] = "not mirrored: under one share"
-        positions.append(position)
-    return positions
+    return [_seed_position(h) for h in holdings if h["qty"] > 0]
+
+
+def _seed_position(holding: dict) -> dict:
+    """One held position as the seed records it, noting why it is not mirrored."""
+    position = {
+        "symbol": holding["symbol"],
+        "security_type": holding["security_type"],
+        "qty": holding["qty"],
+        "price": holding["market_value"] / holding["qty"],
+        "mirrored_qty": 0,
+        "fill_price": None,
+        "order_id": None,
+        "note": "",
+    }
+    if holding["security_type"] not in _MIRRORED_TYPES:
+        position["note"] = f"not mirrored: {holding['security_type']}"
+    elif _whole_shares(position) < 1:
+        position["note"] = "not mirrored: under one share"
+    return position
 
 
 def _mirror(account, experiment: dict, sleep) -> None:
@@ -177,6 +184,7 @@ def seed(api, account, holdings, cash, now, *, new=False, sleep=time.sleep) -> d
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Seed from the live accounts; exit 0 only if every buy settled."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument(
         "--new", action="store_true", help="retire the current experiment first"
