@@ -75,6 +75,20 @@ async def test_decisions_are_unique_per_slot_in_the_database():
             await verdicts.insert_one({**slot, "run_type": "afternoon"})
 
 
+async def test_only_one_experiment_is_current_in_the_database():
+    """The router checks first; the index makes Mongo refuse a second current
+    experiment even when two seeders race past that check."""
+    with patch.object(
+        database, "AsyncIOMotorClient", lambda uri: AsyncMongoMockClient()
+    ):
+        async with app.router.lifespan_context(app):
+            experiments = database.get_db().experiments
+            await experiments.insert_one({"slot": "current", "experiment_id": "a"})
+            with pytest.raises(DuplicateKeyError):
+                await experiments.insert_one({"slot": "current", "experiment_id": "b"})
+            await experiments.insert_one({"slot": "a-retired", "experiment_id": "c"})
+
+
 async def test_legacy_decisions_collection_does_not_block_startup():
     """The cluster may hold a `decisions` collection from the original design.
     Its documents have no trade_date, run_type or symbol, so a unique index

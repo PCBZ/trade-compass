@@ -45,6 +45,16 @@ resource "google_storage_bucket_object" "sync_main" {
   source = "${path.module}/../../sync/src/main.py"
 }
 
+# The paper-trading modules beside main.py (seed.py, paper.py, ...). The VM
+# pulls them by hand, like main.py; bootstrap.sh is left alone because a change
+# to the startup script would make Terraform replace the VM.
+resource "google_storage_bucket_object" "sync_src" {
+  for_each = setsubtract(fileset("${path.module}/../../sync/src", "*.py"), ["main.py"])
+  name     = "sync/${each.value}"
+  bucket   = local.bucket_name
+  source   = "${path.module}/../../sync/src/${each.value}"
+}
+
 resource "google_storage_bucket_object" "sync" {
   for_each = toset(local.sync_root_files)
   name     = "sync/${each.value}"
