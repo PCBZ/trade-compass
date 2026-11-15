@@ -33,10 +33,22 @@ def test_none_falls_back_to_the_default_first():
     assert set(order) == set(get_model_ids())
 
 
-def test_unknown_preferred_is_tried_first_then_every_configured_model():
-    order = _fallback_order("gemini-unknown")
-    assert order[0] == "gemini-unknown"
-    assert set(get_model_ids()).issubset(set(order))
+def test_unknown_preferred_is_dropped_and_the_default_goes_first(caplog):
+    """A saved model from a former provider must not cost a failed call."""
+    with caplog.at_level(logging.INFO):
+        order = _fallback_order("nvidia/nemotron-3-super-120b-a12b:free")
+
+    assert order == _fallback_order(None)
+    assert order[0] == get_default_model_id()
+    assert "nvidia/nemotron-3-super-120b-a12b:free" not in order
+    assert "ignoring saved model nvidia/nemotron" in caplog.text
+
+
+async def test_an_unknown_saved_model_is_never_called(scripted):
+    await ainvoke_with_fallback(
+        "p", object, preferred="nvidia/nemotron-3-super-120b-a12b:free"
+    )
+    assert scripted == [get_default_model_id()]
 
 
 # ── ainvoke_with_fallback: failure handling ───────────────────────────────────
