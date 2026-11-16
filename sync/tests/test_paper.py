@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 import pytest
-from futu import RET_ERROR, RET_OK, Currency, OrderType, TrdEnv
+from futu import RET_ERROR, RET_OK, Currency, OrderType, TrdEnv, TrdSide
 
 import paper
 from paper import NotSimulatedError, SimulatedAccount, real_usd_cash
@@ -32,7 +32,13 @@ class FakeTradeContext:
             orders
             if orders is not None
             else pd.DataFrame(
-                columns=["order_id", "order_status", "dealt_qty", "dealt_avg_price"]
+                columns=[
+                    "order_id",
+                    "order_status",
+                    "dealt_qty",
+                    "dealt_avg_price",
+                    "remark",
+                ]
             )
         )
         self.cash = cash or {}
@@ -113,7 +119,9 @@ def test_every_simulated_call_names_the_simulated_environment():
     account.positions()
     account.open_orders()
     account.orders({"1"})
+    account.orders_by_remark({"x"})
     account.buy_market("MU", 1, "x")
+    account.sell_market("MU", 1, "x")
 
     assert {kw["trd_env"] for _, kw in ctx.calls} == {TrdEnv.SIMULATE}
     assert {kw["acc_id"] for _, kw in ctx.calls} == {9}
@@ -172,6 +180,60 @@ def test_orders_report_fills_for_the_asked_ids_only():
     found = SimulatedAccount(FakeTradeContext(orders=orders)).orders({"7"})
     assert found == {
         "7": {
+            "order_id": "7",
+            "status": "FILLED_ALL",
+            "done": True,
+            "dealt_qty": 3.0,
+            "dealt_avg_price": 961.9,
+        }
+    }
+
+
+def test_sell_goes_to_the_simulated_environment_at_market():
+    ctx = FakeTradeContext()
+    SimulatedAccount(ctx).sell_market("MU", 3, "tc-k")
+
+    [kw] = _sent(ctx, "place_order")
+    assert (kw["trd_env"], kw["acc_id"]) == (TrdEnv.SIMULATE, 9)
+    assert (kw["code"], kw["qty"], kw["trd_side"]) == ("US.MU", 3, TrdSide.SELL)
+    assert (kw["order_type"], kw["remark"]) == (OrderType.MARKET, "tc-k")
+
+
+def test_a_sell_to_a_real_account_is_refused_before_anything_is_sent():
+    ctx = FakeTradeContext()
+    account = SimulatedAccount(ctx)
+    account.acc_id = 1
+
+    with pytest.raises(NotSimulatedError):
+        account.sell_market("MU", 1, "x")
+    assert ctx.calls == []
+
+
+def test_orders_are_found_by_remark_with_their_ids():
+    """How the executor finds an order it sent but never got to record."""
+    orders = pd.DataFrame(
+        [
+            {
+                "order_id": 7,
+                "order_status": "FILLED_ALL",
+                "dealt_qty": 3.0,
+                "dealt_avg_price": 961.9,
+                "remark": "tc-2026-11-16-morning-MU",
+            },
+            {
+                "order_id": 8,
+                "order_status": "SUBMITTED",
+                "dealt_qty": 0.0,
+                "dealt_avg_price": 0.0,
+                "remark": "someone else",
+            },
+        ]
+    )
+    account = SimulatedAccount(FakeTradeContext(orders=orders))
+    found = account.orders_by_remark({"tc-2026-11-16-morning-MU", "tc-missing"})
+    assert found == {
+        "tc-2026-11-16-morning-MU": {
+            "order_id": "7",
             "status": "FILLED_ALL",
             "done": True,
             "dealt_qty": 3.0,

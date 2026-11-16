@@ -47,6 +47,17 @@ def _symbol(code: str) -> str:
     return code.split(".", 1)[-1]
 
 
+def _order_info(o) -> dict:
+    """What the experiment needs from one row of OpenD's order list."""
+    return {
+        "order_id": str(o.order_id),
+        "status": o.order_status,
+        "done": o.order_status in _DONE,
+        "dealt_qty": float(o.dealt_qty),
+        "dealt_avg_price": float(o.dealt_avg_price),
+    }
+
+
 def real_usd_cash(ctx) -> float:
     """USD cash across the real US accounts, read-only.
 
@@ -123,19 +134,27 @@ class SimulatedAccount:
 
     def buy_market(self, symbol: str, qty: int, remark: str) -> str:
         """Buy whole shares at market; returns OpenD's order id."""
+        return self._market_order(TrdSide.BUY, symbol, qty, remark)
+
+    def sell_market(self, symbol: str, qty: int, remark: str) -> str:
+        """Sell whole shares at market; returns OpenD's order id."""
+        return self._market_order(TrdSide.SELL, symbol, qty, remark)
+
+    def _market_order(self, side, symbol: str, qty: int, remark: str) -> str:
+        """Place a regular-hours market order in the simulated account."""
         self._guard()
         data = _ok(
             self._ctx.place_order(
                 price=0,
                 qty=qty,
                 code=f"US.{symbol}",
-                trd_side=TrdSide.BUY,
+                trd_side=side,
                 order_type=OrderType.MARKET,
                 trd_env=_ENV,
                 acc_id=self.acc_id,
                 remark=remark,
             ),
-            f"place_order {symbol}",
+            f"place_order {side} {symbol}",
         )
         return str(data.iloc[0]["order_id"])
 
@@ -143,12 +162,14 @@ class SimulatedAccount:
         """Status, filled shares and average fill price of the given orders."""
         data = self._order_rows()
         mine = data[data["order_id"].astype(str).isin(order_ids)]
-        return {
-            str(o.order_id): {
-                "status": o.order_status,
-                "done": o.order_status in _DONE,
-                "dealt_qty": float(o.dealt_qty),
-                "dealt_avg_price": float(o.dealt_avg_price),
-            }
-            for o in mine.itertuples(index=False)
-        }
+        return {str(o.order_id): _order_info(o) for o in mine.itertuples(index=False)}
+
+    def orders_by_remark(self, remarks: set[str]) -> dict[str, dict]:
+        """Today's orders carrying the given remarks, with their OpenD ids.
+
+        The executor puts its order key in the remark, so this finds an order
+        that was sent but whose id never got recorded.
+        """
+        data = self._order_rows()
+        mine = data[data["remark"].isin(remarks)]
+        return {o.remark: _order_info(o) for o in mine.itertuples(index=False)}
