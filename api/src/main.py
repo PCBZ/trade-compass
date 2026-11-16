@@ -9,6 +9,7 @@ from routers.cache import router as cache_router
 from routers.decisions import router as decisions_router
 from routers.experiment import router as experiment_router
 from routers.holdings import router as holdings_router
+from routers.paper_orders import router as paper_orders_router
 from routers.preferences import router as preferences_router
 from routers.quotes import router as quotes_router
 
@@ -34,6 +35,7 @@ app.include_router(quotes_router, dependencies=[Depends(require_api_key)])
 app.include_router(cache_router, dependencies=[Depends(require_api_key)])
 app.include_router(decisions_router, dependencies=[Depends(require_api_key)])
 app.include_router(experiment_router, dependencies=[Depends(require_api_key)])
+app.include_router(paper_orders_router, dependencies=[Depends(require_api_key)])
 
 
 @app.get("/health")
