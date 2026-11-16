@@ -68,7 +68,7 @@ def _cron_slots() -> set[tuple[int, int]]:
     """Every (hour, minute) UTC the cron entries in setup_cron.sh fire at."""
     slots = set()
     for minute, hour in re.findall(
-        r'CRON_JOB_\d="(\S+) (\S+) \* \* 1-5', _CRON.read_text()
+        r'SESSION_SCHEDULE_\d="(\S+) (\S+) \* \* 1-5', _CRON.read_text()
     ):
         if "-" in hour:
             lo, hi = map(int, hour.split("-"))
