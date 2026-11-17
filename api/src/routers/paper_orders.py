@@ -10,7 +10,7 @@ router = APIRouter(prefix="/experiment/orders", tags=["experiment"])
 _CURRENT = {"slot": "current"}
 
 
-async def _current_id() -> str:
+async def current_experiment_id() -> str:
     """The current experiment's id, or a 404 if there is none."""
     doc = await get_db().experiments.find_one(_CURRENT, {"experiment_id": 1})
     if doc is None:
@@ -26,7 +26,7 @@ async def put_order(order: PaperOrder):
     executor cannot write into a retired one. `created_at` is kept from the
     first write; `updated_at` is set on every write.
     """
-    current = await _current_id()
+    current = await current_experiment_id()
     if order.experiment_id != current:
         raise HTTPException(status_code=409, detail=f"Current experiment is {current}")
     now = datetime.now(UTC)
@@ -51,7 +51,7 @@ async def list_orders(
     ),
 ):
     """An experiment's order records, oldest first."""
-    query: dict = {"experiment_id": experiment_id or await _current_id()}
+    query: dict = {"experiment_id": experiment_id or await current_experiment_id()}
     if trade_date is not None:
         query["trade_date"] = trade_date
     cursor = get_db().paper_orders.find(query, {"_id": 0}).sort("created_at", 1)

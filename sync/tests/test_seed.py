@@ -128,6 +128,17 @@ def test_seed_is_recorded_before_any_order_then_finished():
     assert experiment["status"] == "active"
 
 
+def test_the_seed_records_spys_price_for_the_report():
+    experiment, _ = _run(spy_price=680.25)
+    assert experiment["spy_price"] == 680.25
+
+
+def test_a_seed_without_a_spy_price_still_runs():
+    experiment, _ = _run()
+    assert experiment["spy_price"] is None
+    assert experiment["status"] == "active"
+
+
 def test_seed_record_holds_the_date_cash_and_fills():
     experiment, _ = _run()
 

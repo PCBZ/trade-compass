@@ -145,7 +145,17 @@ def _mirror(account, experiment: dict, sleep) -> None:
         experiment["status"] = "active"
 
 
-def seed(api, account, holdings, cash, now, *, new=False, sleep=time.sleep) -> dict:
+def seed(
+    api,
+    account,
+    holdings,
+    cash,
+    now,
+    *,
+    spy_price=None,
+    new=False,
+    sleep=time.sleep,
+) -> dict:
     """Record the seed, mirror it in the simulated account, record the result."""
     current = api.get()
     if current and not new:
@@ -172,6 +182,7 @@ def seed(api, account, holdings, cash, now, *, new=False, sleep=time.sleep) -> d
         "seeded_at": now.isoformat(),
         "seed_cash": cash,
         "cash": cash,
+        "spy_price": spy_price,
         "positions": plan(holdings),
     }
     api.create(experiment)
@@ -199,6 +210,11 @@ def main(argv: list[str] | None = None) -> int:
 
     holdings = sync.fetch_positions()
     sync.annotate_security_types(holdings)
+    # The daily report's benchmark: the start value as if put into SPY now.
+    spy = sync.fetch_quotes(["US.SPY"])
+    spy_price = spy[0]["current_price"] if spy else None
+    if not spy_price:
+        log.warning("No SPY price; the daily report will have no SPY benchmark")
 
     ctx = OpenSecTradeContext(
         filter_trdmarket=TrdMarket.US, host=sync.OPEND_HOST, port=sync.OPEND_PORT
@@ -210,7 +226,13 @@ def main(argv: list[str] | None = None) -> int:
             base_url=sync.API_URL, headers={"X-API-Key": sync.API_KEY}, timeout=30
         ) as client:
             experiment = seed(
-                ExperimentApi(client), account, holdings, cash, now, new=args.new
+                ExperimentApi(client),
+                account,
+                holdings,
+                cash,
+                now,
+                spy_price=spy_price,
+                new=args.new,
             )
     except SeedRefused as exc:
         log.error("%s", exc)
