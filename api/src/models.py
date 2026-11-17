@@ -268,6 +268,74 @@ class Experiment(BaseModel):
         return self
 
 
+class PaperOrder(BaseModel):
+    """One verdict acted on by the paper-trading executor, and what came of it.
+
+    `order_key` is derived from the verdict (date, run, stock), so a verdict is
+    acted on at most once; it is also the order's remark in OpenD, which is how
+    the executor finds an order it sent but did not get to record. Positions and
+    cash are worked out from these records, so they keep every fill.
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "order_key": "tc-2026-11-16-morning-MU",
+                "experiment_id": "3f9c2a7e5b1d4c08",
+                "trade_date": "2026-11-16",
+                "run_type": "morning",
+                "symbol": "MU",
+                "side": "BUY",
+                "verdict_decided_at": "2026-11-16T15:03:12Z",
+                "qty": 2,
+                "price": 961.58,
+                "status": "FILLED_ALL",
+                "opend_order_id": "8812377",
+                "dealt_qty": 2.0,
+                "dealt_avg_price": 961.9,
+                "fee": 0.0,
+                "reason": "",
+            }
+        }
+    )
+
+    order_key: str = Field(
+        pattern=r"^[A-Za-z0-9._-]{1,64}$",
+        description="tc-{trade_date}-{run_type}-{symbol}; also the OpenD remark",
+    )
+    experiment_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    trade_date: str = Field(
+        pattern=r"^\d{4}-\d{2}-\d{2}$", description="US Eastern date of the verdict"
+    )
+    run_type: RunType = Field(description="The run whose verdict this acts on")
+    symbol: str = Field(description="Ticker symbol; stored upper-case")
+    side: Literal["BUY", "SELL"]
+    verdict_decided_at: datetime = Field(description="When the verdict was produced")
+    qty: int = Field(ge=0, description="Shares ordered; 0 when skipped or refused")
+    price: float | None = Field(
+        default=None, description="Snapshot price the order was sized on"
+    )
+    status: str = Field(
+        min_length=1,
+        max_length=32,
+        description="skipped, refused or sending, else OpenD's order status",
+    )
+    opend_order_id: str | None = Field(default=None, description="OpenD's order id")
+    dealt_qty: float = Field(default=0.0, ge=0, description="Shares filled so far")
+    dealt_avg_price: float | None = Field(
+        default=None, description="Average fill price"
+    )
+    fee: float = Field(default=0.0, ge=0, description="Fee charged to the cash record")
+    reason: str = Field(
+        default="", max_length=500, description="Why it was skipped or refused"
+    )
+
+    @field_validator("symbol")
+    @classmethod
+    def _upper(cls, v: str) -> str:
+        return v.strip().upper()
+
+
 class Preferences(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
