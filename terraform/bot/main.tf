@@ -286,6 +286,24 @@ resource "google_cloud_scheduler_job" "push" {
   depends_on = [google_cloud_run_v2_service.bot]
 }
 
+# The paper-trading experiment's daily report (#84). The VM values the day at
+# about 16:15 ET and stores it; this asks the bot to send it. Reading and
+# sending one record is quick, so a short deadline is enough.
+resource "google_cloud_scheduler_job" "report" {
+  name             = "trade-compass-report"
+  description      = "trade-compass paper-trading daily report"
+  schedule         = "30 16 * * 1-5"
+  time_zone        = "America/New_York"
+  attempt_deadline = "60s"
+
+  http_target {
+    http_method = "POST"
+    uri         = "${google_cloud_run_v2_service.bot.uri}/report"
+  }
+
+  depends_on = [google_cloud_run_v2_service.bot]
+}
+
 # ── Decision log → BigQuery (eval corpus) ─────────────────────────────────────
 # _Default keeps 30 days; sinks are not retroactive, so this ships with the
 # logging that feeds it.

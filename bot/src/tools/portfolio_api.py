@@ -62,6 +62,25 @@ async def get_cache_entry(key: str) -> dict[str, Any]:
         return resp.json()
 
 
+async def get_report(trade_date: str) -> dict[str, Any] | None:
+    """GET /experiment/reports?trade_date= — that day's paper-trading report.
+
+    None when there is no report for the day, or no current experiment (404).
+    """
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{_API_URL}/experiment/reports",
+            params={"trade_date": trade_date},
+            headers=_headers(),
+            timeout=10,
+        )
+        if resp.status_code == 404:
+            return None
+        resp.raise_for_status()
+        reports = resp.json()
+        return reports[0] if reports else None
+
+
 async def put_decision(record: dict[str, Any]) -> None:
     """PUT /decisions — store one scheduled verdict, replacing any earlier one
     for the same date, run and stock.
