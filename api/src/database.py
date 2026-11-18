@@ -62,3 +62,7 @@ async def _ensure_indexes(db: AsyncIOMotorDatabase):
     # a retired one's slot is its own id. A new collection, so no legacy rows.
     await db.experiments.create_index("slot", unique=True)
     await db.experiments.create_index("experiment_id", unique=True)
+    # Each verdict is acted on at most once per experiment.
+    await db.paper_orders.create_index(
+        [("experiment_id", 1), ("order_key", 1)], unique=True
+    )
