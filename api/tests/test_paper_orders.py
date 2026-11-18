@@ -112,6 +112,31 @@ async def test_only_one_record_per_verdict_in_the_database(client):
 
 
 @pytest.mark.asyncio
+async def test_a_stale_write_cannot_erase_a_fill(client):
+    await _start(client)
+    await _put(client)
+    await _put(client, status="FILLED_ALL", dealt_qty=2.0, dealt_avg_price=961.9)
+
+    r = await _put(client)  # the earlier "sending" snapshot, arriving late
+    assert r.status_code == 409
+
+    [doc] = await _list(client)
+    assert (doc["status"], doc["dealt_qty"]) == ("FILLED_ALL", 2.0)
+
+
+@pytest.mark.asyncio
+async def test_fills_can_grow_and_be_rewritten_unchanged(client):
+    await _start(client)
+    await _put(client, status="FILLED_PART", dealt_qty=1.0)
+    await _put(client, status="FILLED_ALL", dealt_qty=2.0)
+    r = await _put(client, status="FILLED_ALL", dealt_qty=2.0, fee=1.0)
+    assert r.status_code == 200
+
+    [doc] = await _list(client)
+    assert (doc["status"], doc["dealt_qty"], doc["fee"]) == ("FILLED_ALL", 2.0, 1.0)
+
+
+@pytest.mark.asyncio
 async def test_list_filters_by_trade_date(client):
     await _start(client)
     await _put(client)
@@ -132,7 +157,7 @@ async def test_a_retired_experiment_keeps_its_records_and_takes_no_new_ones(clie
     await client.post("/experiment/retire", headers=HEADERS)
     await _start(client, "exp2")
 
-    r = await _put(client, order_key="tc-2026-11-16-noon-MU")
+    r = await _put(client, order_key="tc-2026-11-16-noon-MU", run_type="noon")
     assert r.status_code == 409
     assert [d["order_key"] for d in await _list(client, experiment_id="exp1")] == [
         "tc-2026-11-16-morning-MU"
@@ -156,6 +181,10 @@ async def test_no_current_experiment_is_404(client):
         {"qty": 1.5},
         {"order_key": "has space"},
         {"order_key": "x" * 65},
+        {"order_key": "tc-2026-11-16-morning-mu"},
+        {"order_key": "tc-2026-11-16-morning-NVDA"},
+        {"order_key": "tc-2026-11-17-morning-MU"},
+        {"order_key": "tc-2026-11-16-noon-MU"},
         {"trade_date": "11/16/2026"},
         {"run_type": "manual"},
         {"status": ""},

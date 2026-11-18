@@ -271,8 +271,8 @@ class Experiment(BaseModel):
 class PaperOrder(BaseModel):
     """One verdict acted on by the paper-trading executor, and what came of it.
 
-    `order_key` is derived from the verdict (date, run, stock), so a verdict is
-    acted on at most once; it is also the order's remark in OpenD, which is how
+    `order_key` must be tc-{trade_date}-{run_type}-{SYMBOL}, derived from the
+    verdict, so a verdict is acted on at most once; it is also the order's remark in OpenD, which is how
     the executor finds an order it sent but did not get to record. Positions and
     cash are worked out from these records, so they keep every fill.
     """
@@ -334,6 +334,15 @@ class PaperOrder(BaseModel):
     @classmethod
     def _upper(cls, v: str) -> str:
         return v.strip().upper()
+
+    @model_validator(mode="after")
+    def _key_matches_verdict(self) -> "PaperOrder":
+        # Checked against the upper-cased symbol, so "...-mu" and "...-MU"
+        # cannot become two records for the same verdict.
+        expected = f"tc-{self.trade_date}-{self.run_type}-{self.symbol}"
+        if self.order_key != expected:
+            raise ValueError(f"order_key must be {expected}")
+        return self
 
 
 class Preferences(BaseModel):

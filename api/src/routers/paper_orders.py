@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Query
+from pymongo.errors import DuplicateKeyError
 
 from database import get_db
 from models import PaperOrder
@@ -25,19 +26,34 @@ async def put_order(order: PaperOrder):
     Only the current experiment takes new records (409 otherwise), so a stale
     executor cannot write into a retired one. `created_at` is kept from the
     first write; `updated_at` is set on every write.
+
+    Filled shares never go down, so a write with fewer than the record holds
+    is a stale one and gets a 409 rather than erasing a fill. The check is in
+    the filter: when it fails, the upsert tries to insert a second record for
+    the same key and the unique index refuses it, all in one operation.
     """
     current = await _current_id()
     if order.experiment_id != current:
         raise HTTPException(status_code=409, detail=f"Current experiment is {current}")
     now = datetime.now(UTC)
-    await get_db().paper_orders.update_one(
-        {"experiment_id": order.experiment_id, "order_key": order.order_key},
-        {
-            "$set": {**order.model_dump(), "updated_at": now},
-            "$setOnInsert": {"created_at": now},
-        },
-        upsert=True,
-    )
+    try:
+        await get_db().paper_orders.update_one(
+            {
+                "experiment_id": order.experiment_id,
+                "order_key": order.order_key,
+                "dealt_qty": {"$lte": order.dealt_qty},
+            },
+            {
+                "$set": {**order.model_dump(), "updated_at": now},
+                "$setOnInsert": {"created_at": now},
+            },
+            upsert=True,
+        )
+    except DuplicateKeyError:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{order.order_key} has more shares filled than {order.dealt_qty}",
+        ) from None
     return order
 
 
