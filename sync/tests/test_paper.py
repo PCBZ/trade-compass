@@ -21,7 +21,9 @@ _ACCS = pd.DataFrame(
 class FakeTradeContext:
     """OpenD's trade context, answering from canned tables and logging calls."""
 
-    def __init__(self, accs=_ACCS, positions=None, orders=None, cash=None):
+    def __init__(
+        self, accs=_ACCS, positions=None, orders=None, cash=None, history=None
+    ):
         self.accs = accs
         self.positions = (
             positions
@@ -41,6 +43,7 @@ class FakeTradeContext:
                 ]
             )
         )
+        self.history = history if history is not None else self.order_rows
         self.cash = cash or {}
         self.calls = []
 
@@ -60,6 +63,10 @@ class FakeTradeContext:
     def order_list_query(self, **kw):
         self.calls.append(("order_list_query", kw))
         return RET_OK, self.order_rows
+
+    def history_order_list_query(self, **kw):
+        self.calls.append(("history_order_list_query", kw))
+        return RET_OK, self.history
 
     def place_order(self, **kw):
         self.calls.append(("place_order", kw))
@@ -240,6 +247,26 @@ def test_orders_are_found_by_remark_with_their_ids():
             "dealt_avg_price": 961.9,
         }
     }
+
+
+def test_orders_from_earlier_days_are_found_in_the_history():
+    """OpenD's order list is today's only; an older order is in the history."""
+    columns = ["order_id", "order_status", "dealt_qty", "dealt_avg_price", "remark"]
+    history = pd.DataFrame(
+        [[7, "FILLED_ALL", 3.0, 961.9, "tc-2026-11-13-morning-MU"]], columns=columns
+    )
+    ctx = FakeTradeContext(orders=pd.DataFrame(columns=columns), history=history)
+    account = SimulatedAccount(ctx)
+
+    found = account.orders_by_remark({"tc-2026-11-13-morning-MU"}, since="2026-11-13")
+
+    assert found["tc-2026-11-13-morning-MU"]["dealt_qty"] == 3.0
+    [kw] = _sent(ctx, "history_order_list_query")
+    assert (kw["start"], kw["trd_env"], kw["acc_id"]) == (
+        "2026-11-13",
+        TrdEnv.SIMULATE,
+        9,
+    )
 
 
 def test_real_cash_is_the_usd_balance_of_the_real_accounts():

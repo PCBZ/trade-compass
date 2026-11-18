@@ -90,14 +90,30 @@ class FakeApi:
 
 
 class FakeAccount:
-    """A simulated account: orders fill at `fill` prices unless told otherwise."""
+    """A simulated account: orders fill at `fill` prices unless told otherwise.
 
-    def __init__(self, held=None, fill=None, stay_open=(), refuse=(), clock=None):
+    Like OpenD, its order list holds `today`'s orders only; earlier days'
+    orders are found only by asking for the history `since` a date.
+    `refuse` fails a send before it reaches OpenD; `ambiguous` places the order
+    and then fails anyway, as a timeout or a dropped connection can.
+    """
+
+    def __init__(
+        self,
+        held=None,
+        fill=None,
+        stay_open=(),
+        refuse=(),
+        ambiguous=(),
+        clock=None,
+    ):
         self.held = dict(held if held is not None else {"MU": 12.0})
         self.fill = fill or {}
         self.stay_open = set(stay_open)
         self.refuse = set(refuse)
+        self.ambiguous = set(ambiguous)
         self.clock = clock
+        self.today = _TODAY
         self.by_id = {}
         self.sent = []
         self.reads = []
@@ -114,6 +130,7 @@ class FakeAccount:
         self.by_id[order_id] = {
             "order_id": order_id,
             "remark": remark,
+            "day": self.today,
             "status": "SUBMITTED" if open_ else "FILLED_ALL",
             "done": not open_,
             "dealt_qty": 0.0 if open_ else float(qty),
@@ -124,6 +141,8 @@ class FakeAccount:
             self.held[symbol] = self.held.get(symbol, 0.0) + sign * qty
             if not self.held[symbol]:
                 del self.held[symbol]
+        if symbol in self.ambiguous:
+            raise RuntimeError("place_order failed: Timeout")
         return order_id
 
     def buy_market(self, symbol, qty, remark):
@@ -140,10 +159,13 @@ class FakeAccount:
         self._read()
         return {i: _info(self.by_id[i]) for i in order_ids if i in self.by_id}
 
-    def orders_by_remark(self, remarks):
+    def orders_by_remark(self, remarks, since=None):
         self._read()
         return {
-            o["remark"]: _info(o) for o in self.by_id.values() if o["remark"] in remarks
+            o["remark"]: _info(o)
+            for o in self.by_id.values()
+            if o["remark"] in remarks
+            and (o["day"] == self.today or (since is not None and since <= o["day"]))
         }
 
     def fill_now(self, order_id, price=100.0):
@@ -428,6 +450,58 @@ def test_no_new_order_close_to_the_bell():
     assert account.sent == [] and api.order_puts == []
 
 
+def test_the_close_margin_is_checked_again_right_before_sending():
+    """A slow API write can carry the send into the margin; it must not go out."""
+    clock = Clock()
+
+    class SlowApi(FakeApi):
+        def put_order(self, order):
+            clock.sleep(5)  # e.g. the API starting up
+            super().put_order(order)
+
+    api = SlowApi(_experiment(), [_verdict("NVDA", "BUY")])
+    account = FakeAccount()
+    margin_starts = _T0 + timedelta(seconds=3)
+    _run(api, account, clock=clock, can_trade=lambda t: t < margin_starts)
+
+    assert account.sent == []
+    order = api.ledger["tc-2026-11-16-morning-NVDA"]
+    assert order["status"] == "waiting" and "close" in order["reason"]
+
+
+def test_a_send_that_failed_after_reaching_opend_is_adopted_next_run():
+    """A timeout can come after OpenD took the order; it must not be final."""
+    verdicts = [_verdict("NVDA", "BUY"), _verdict("MU", "SELL", minute=1)]
+    api = FakeApi(_experiment(), verdicts)
+    account = FakeAccount(fill={"NVDA": 200.0}, ambiguous={"NVDA"})
+    key = "tc-2026-11-16-morning-NVDA"
+
+    _run(api, account)
+    assert api.ledger[key]["status"] == "unsure"
+    assert [s[1] for s in account.sent] == ["NVDA"]  # nothing new while unknown
+
+    _run(api, account)
+    order = api.ledger[key]
+    assert (order["status"], order["dealt_qty"]) == ("FILLED_ALL", 12.0)
+    assert [s[1] for s in account.sent] == ["NVDA", "MU"]  # sent once; trading goes on
+
+
+def test_a_send_that_never_reached_opend_is_refused_next_run_not_resent():
+    verdicts = [_verdict("NVDA", "BUY"), _verdict("MU", "SELL", minute=1)]
+    api = FakeApi(_experiment(), verdicts)
+    account = FakeAccount(refuse={"NVDA"})
+    key = "tc-2026-11-16-morning-NVDA"
+
+    _run(api, account)
+    assert api.ledger[key]["status"] == "unsure"
+    assert account.sent == []
+
+    _run(api, account)
+    order = api.ledger[key]
+    assert order["status"] == "refused" and "not tradable" in order["reason"]
+    assert [s[1] for s in account.sent] == ["MU"]  # NVDA never resent
+
+
 def test_fees_come_out_of_the_cash(monkeypatch):
     monkeypatch.setattr(execute, "FEE_PER_ORDER", 1.5)
     api = FakeApi(_experiment(), [_verdict("NVDA", "BUY")])
@@ -480,6 +554,69 @@ def test_yesterdays_unsent_order_is_not_sent_today():
 
     assert account.sent == []
     assert api.ledger[sending["order_key"]]["status"] == "refused"
+
+
+def _sent_on(account, day, symbol, qty, remark, stay_open=False):
+    """Place an order on an earlier `day`; OpenD's list today will not show it."""
+    account.today = day
+    if stay_open:
+        account.stay_open.add(symbol)
+    order_id = account.buy_market(symbol, qty, remark)
+    account.stay_open.discard(symbol)
+    account.today = _TODAY
+    return order_id
+
+
+def test_yesterdays_order_sent_but_not_recorded_is_found_in_the_history():
+    """Sent at Friday's last run, crashed before recording: Monday adopts it."""
+    sending = _sending(trade_date="2026-11-13")
+    api = FakeApi(_experiment(), [_verdict("MU", "SELL")], ledger=[sending])
+    account = FakeAccount()
+    order_id = _sent_on(account, "2026-11-13", "NVDA", 12, sending["order_key"])
+    account.sent.clear()
+
+    _run(api, account)
+
+    order = api.ledger[sending["order_key"]]
+    assert (order["opend_order_id"], order["status"], order["dealt_qty"]) == (
+        order_id,
+        "FILLED_ALL",
+        12.0,
+    )
+    assert account.sent == [("SELL", "MU", 12, "tc-2026-11-16-morning-MU")]
+
+
+def test_yesterdays_open_order_that_filled_at_the_close_is_adopted_not_lost():
+    """Still open when Friday's wait ended, filled at the close."""
+    submitted = _sending(trade_date="2026-11-13")
+    account = FakeAccount()
+    order_id = _sent_on(
+        account, "2026-11-13", "NVDA", 12, submitted["order_key"], stay_open=True
+    )
+    submitted.update(status="SUBMITTED", opend_order_id=order_id)
+    account.fill_now(order_id)
+    account.sent.clear()
+    api = FakeApi(_experiment(), [_verdict("MU", "SELL")], ledger=[submitted])
+
+    _run(api, account)
+
+    order = api.ledger[submitted["order_key"]]
+    assert (order["status"], order["dealt_qty"]) == ("FILLED_ALL", 12.0)
+    assert account.sent == [("SELL", "MU", 12, "tc-2026-11-16-morning-MU")]
+
+
+def test_yesterdays_unsure_send_is_found_in_the_history():
+    """A send that errored at Friday's last run, but OpenD took it."""
+    unsure = _sending(trade_date="2026-11-13")
+    unsure.update(status="unsure", reason="place_order failed: Timeout")
+    account = FakeAccount()
+    _sent_on(account, "2026-11-13", "NVDA", 12, unsure["order_key"])
+    api = FakeApi(_experiment(), [], ledger=[unsure])
+
+    _run(api, account)
+
+    order = api.ledger[unsure["order_key"]]
+    assert (order["status"], order["dealt_qty"]) == ("FILLED_ALL", 12.0)
 
 
 def test_an_order_that_vanished_from_opend_is_marked_lost(caplog):
