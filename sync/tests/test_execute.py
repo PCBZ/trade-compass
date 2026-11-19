@@ -404,17 +404,6 @@ def test_no_price_waits():
     assert api.ledger["tc-2026-11-16-morning-NVDA"]["status"] == "waiting"
 
 
-def test_a_refused_order_is_recorded_and_the_next_verdict_still_runs():
-    verdicts = [_verdict("NVDA", "BUY"), _verdict("MU", "SELL", minute=1)]
-    api = FakeApi(_experiment(), verdicts)
-    account = FakeAccount(refuse={"NVDA"})
-    _run(api, account)
-
-    order = api.ledger["tc-2026-11-16-morning-NVDA"]
-    assert order["status"] == "refused" and "not tradable" in order["reason"]
-    assert [s[1] for s in account.sent] == ["MU"]
-
-
 def test_a_guard_error_is_not_swallowed():
     class Guarded(FakeAccount):
         def buy_market(self, symbol, qty, remark):

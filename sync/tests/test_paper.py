@@ -127,6 +127,7 @@ def test_every_simulated_call_names_the_simulated_environment():
     account.open_orders()
     account.orders({"1"})
     account.orders_by_remark({"x"})
+    account.orders_by_remark({"x"}, since="2026-11-13")
     account.buy_market("MU", 1, "x")
     account.sell_market("MU", 1, "x")
 
@@ -267,6 +268,24 @@ def test_orders_from_earlier_days_are_found_in_the_history():
         TrdEnv.SIMULATE,
         9,
     )
+
+
+def test_the_history_is_read_only_for_an_earlier_day():
+    """Each read counts against OpenD's limits; most runs need today's only."""
+    ctx = FakeTradeContext()
+    SimulatedAccount(ctx).orders_by_remark({"x"})
+    assert _sent(ctx, "history_order_list_query") == []
+
+
+def test_todays_fresh_list_wins_over_the_history():
+    columns = ["order_id", "order_status", "dealt_qty", "dealt_avg_price", "remark"]
+    history = pd.DataFrame([[7, "SUBMITTED", 0.0, 0.0, "k"]], columns=columns)
+    today = pd.DataFrame([[7, "FILLED_ALL", 3.0, 961.9, "k"]], columns=columns)
+    account = SimulatedAccount(FakeTradeContext(orders=today, history=history))
+
+    found = account.orders_by_remark({"k"}, since="2026-11-13")
+
+    assert (found["k"]["status"], found["k"]["dealt_qty"]) == ("FILLED_ALL", 3.0)
 
 
 def test_real_cash_is_the_usd_balance_of_the_real_accounts():

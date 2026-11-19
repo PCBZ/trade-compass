@@ -58,6 +58,12 @@ def _order_info(o) -> dict:
     }
 
 
+def _by_remark(data, remarks: set[str]) -> dict[str, dict]:
+    """The rows of an OpenD order table whose remark is one of `remarks`."""
+    mine = data[data["remark"].isin(remarks)]
+    return {o.remark: _order_info(o) for o in mine.itertuples(index=False)}
+
+
 def real_usd_cash(ctx) -> float:
     """USD cash across the real US accounts, read-only.
 
@@ -164,12 +170,26 @@ class SimulatedAccount:
         mine = data[data["order_id"].astype(str).isin(order_ids)]
         return {str(o.order_id): _order_info(o) for o in mine.itertuples(index=False)}
 
-    def orders_by_remark(self, remarks: set[str]) -> dict[str, dict]:
-        """Today's orders carrying the given remarks, with their OpenD ids.
+    def orders_by_remark(
+        self, remarks: set[str], since: str | None = None
+    ) -> dict[str, dict]:
+        """Orders carrying the given remarks, with their OpenD ids.
 
         The executor puts its order key in the remark, so this finds an order
-        that was sent but whose id never got recorded.
+        that was sent but whose id never got recorded. OpenD's order list holds
+        today's orders only; with `since` (a YYYY-MM-DD date before today) the
+        order history from that date is searched too, for an order left
+        unsettled at an earlier day's last run. Today's list wins where both
+        have an order, being read fresh.
         """
-        data = self._order_rows()
-        mine = data[data["remark"].isin(remarks)]
-        return {o.remark: _order_info(o) for o in mine.itertuples(index=False)}
+        found = {}
+        if since is not None:
+            self._guard()
+            history = _ok(
+                self._ctx.history_order_list_query(
+                    start=since, trd_env=_ENV, acc_id=self.acc_id
+                ),
+                "history_order_list_query",
+            )
+            found |= _by_remark(history, remarks)
+        return found | _by_remark(self._order_rows(), remarks)

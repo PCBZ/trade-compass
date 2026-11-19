@@ -1,8 +1,7 @@
 """Paper-trading executor (#87): act on today's high-confidence verdicts.
 
-Runs on the VM from cron, every 5 minutes during US market hours:
-
-    /opt/trade-compass/venv/bin/python /opt/trade-compass/sync/execute.py
+Runs on the VM every 5 minutes during US market hours, from the cron job that
+setup_cron.sh installs with the sync's virtualenv.
 
 Each run brings the order records up to date from OpenD, checks the simulated
 account against them, then acts on any high BUY or SELL verdict from today
@@ -26,6 +25,7 @@ import logging
 import math
 import os
 import sys
+import tempfile
 import time
 from datetime import UTC, datetime, timedelta
 
@@ -50,11 +50,16 @@ _CLOSE_MARGIN = timedelta(minutes=2)
 # Fresh order reads are limited to 10 per 30 s; one every 5 s stays under it.
 _FILL_WAIT_S = 60
 _POLL_S = 5
-_LOCK_PATH = os.getenv("PAPER_EXECUTOR_LOCK", "/tmp/trade-compass-execute.lock")
+# Every cron firing has the same environment, so all runs agree on this path.
+_LOCK_PATH = os.getenv(
+    "PAPER_EXECUTOR_LOCK",
+    os.path.join(tempfile.gettempdir(), "trade-compass-execute.lock"),
+)
 
 # Statuses the executor sets itself; any other status is OpenD's.
 _SENDING = "sending"  # recorded, then sent; the id is not known yet
 _WAITING = "waiting"  # not acted on yet for a passing reason; tried again
+_UNSURE = "unsure"  # the send errored, but OpenD may have taken it; looked up
 _SKIPPED = "skipped"  # nothing to do, final
 _REFUSED = "refused"  # a check or OpenD said no, final
 _LOST = "lost"  # had an OpenD id but is no longer in OpenD's list
@@ -169,21 +174,33 @@ def _apply(order: dict, info: dict) -> None:
 def reconcile(api, account, ledger: list[dict], today: str) -> set[str]:
     """Bring open records up to date from OpenD; return the keys to send again.
 
-    A `sending` record missing from OpenD's list never reached it, so it is
-    sent again if it is today's. One that had an OpenD id but is gone is lost:
-    logged, and the position check that follows decides whether to go on.
+    Records are found by remark, in OpenD's history too when one is from an
+    earlier day, since OpenD's order list holds today's orders only.
+
+    Found nowhere:
+    - `sending` never reached OpenD, so it is sent again if it is today's.
+    - `unsure` (its send errored) is refused, not resent: a real rejection
+      would only fail again.
+    - one that had an OpenD id is lost: logged, and the position check that
+      follows decides whether to go on.
     """
     pending = [o for o in ledger if _is_open(o)]
     if not pending:
         return set()
-    found = account.orders_by_remark({o["order_key"] for o in pending})
+    oldest = min(o["trade_date"] for o in pending)
+    found = account.orders_by_remark(
+        {o["order_key"] for o in pending}, since=oldest if oldest < today else None
+    )
     resend = set()
     for order in pending:
         info = found.get(order["order_key"])
         if info is not None:
             _apply(order, info)
+        elif order["status"] == _UNSURE:
+            order["status"] = _REFUSED
+            order["reason"] = f"{order['reason']}; OpenD has no such order"[:500]
         elif order["status"] != _SENDING:
-            order["status"], order["reason"] = _LOST, "no longer in OpenD's order list"
+            order["status"], order["reason"] = _LOST, "not in OpenD's orders"
             log.error("Order %s is lost: %s", order["order_key"], order["reason"])
         elif order["trade_date"] == today:
             resend.add(order["order_key"])
@@ -215,17 +232,23 @@ def _size(verdict, held, cash, quotes, now) -> tuple[int, float | None, str, str
     return qty, price, "", ""
 
 
-def _act(api, account, verdict, experiment_id, qty, price, sleep) -> dict:
+def _act(api, account, verdict, experiment_id, qty, price, may_send, sleep) -> dict:
     """Record, send and follow one order until it finishes or the wait ends."""
     order = _record(verdict, experiment_id, qty, _SENDING, price=price)
     api.put_order(order)  # first: from here a crash is found by the remark
+    if not may_send():  # that write can be slow; the close margin may have begun
+        order["status"], order["reason"] = _WAITING, "too close to the close"
+        api.put_order(order)
+        return order
     send = account.buy_market if order["side"] == "BUY" else account.sell_market
     try:
         order_id = send(order["symbol"], qty, order["order_key"])
     except NotSimulatedError:
         raise
     except RuntimeError as exc:
-        order["status"], order["reason"] = _REFUSED, f"OpenD refused: {exc}"[:500]
+        # A timeout or a dropped connection can come after OpenD took the
+        # order, so this is not final: the next run looks for it by remark.
+        order["status"], order["reason"] = _UNSURE, f"send failed: {exc}"[:500]
         api.put_order(order)
         return order
 
@@ -286,13 +309,20 @@ def run(api, account, quotes, *, clock, can_trade, sleep=time.sleep) -> None:
             log.info("%s %s: %s", key, status, reason)
         else:
             order = _act(
-                api, account, verdict, experiment["experiment_id"], qty, price, sleep
+                api,
+                account,
+                verdict,
+                experiment["experiment_id"],
+                qty,
+                price,
+                lambda: can_trade(clock()),
+                sleep,
             )
             log.info("%s %s %s: %s", key, order["side"], qty, order["status"])
         ledger = [o for o in ledger if o["order_key"] != key] + [order]
         held, cash = book(experiment, ledger)
         if _is_open(order):
-            log.warning("%s is still open after %d s; stopping", key, _FILL_WAIT_S)
+            log.warning("%s is %s; stopping until it settles", key, order["status"])
             break
     _save_cash(api, experiment, cash)
 
