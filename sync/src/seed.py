@@ -1,8 +1,9 @@
 """Seed the paper-trading experiment from the real positions and cash (#86).
 
-Run once, by hand, on the VM during US market hours:
+Run once, by hand, on the VM during US market hours, with the same virtualenv
+and directory as the cron jobs in setup_cron.sh:
 
-    /opt/trade-compass/venv/bin/python /opt/trade-compass/sync/seed.py [--new]
+    python seed.py [--new]
 
 It records the seed through the API before placing any order, so a crash
 part-way can never lead to a second seed. It then buys the same whole shares
