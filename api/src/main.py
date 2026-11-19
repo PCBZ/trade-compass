@@ -11,6 +11,7 @@ from routers.experiment import router as experiment_router
 from routers.holdings import router as holdings_router
 from routers.paper_orders import router as paper_orders_router
 from routers.preferences import router as preferences_router
+from routers.reports import router as reports_router
 from routers.quotes import router as quotes_router
 
 _REQUIRED_ENV = ["API_KEY", "MONGODB_URI"]
@@ -36,6 +37,7 @@ app.include_router(cache_router, dependencies=[Depends(require_api_key)])
 app.include_router(decisions_router, dependencies=[Depends(require_api_key)])
 app.include_router(experiment_router, dependencies=[Depends(require_api_key)])
 app.include_router(paper_orders_router, dependencies=[Depends(require_api_key)])
+app.include_router(reports_router, dependencies=[Depends(require_api_key)])
 
 
 @app.get("/health")

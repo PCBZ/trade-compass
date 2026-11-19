@@ -219,6 +219,7 @@ class Experiment(BaseModel):
                 "seeded_at": "2026-11-09T15:12:40Z",
                 "seed_cash": 2500.0,
                 "cash": 2500.0,
+                "spy_price": 680.25,
                 "positions": [
                     {
                         "symbol": "MU",
@@ -250,6 +251,11 @@ class Experiment(BaseModel):
     cash: float | None = Field(
         default=None,
         description="The experiment's own cash; starts at seed_cash when omitted",
+    )
+    spy_price: float | None = Field(
+        default=None,
+        gt=0,
+        description="SPY's price at the seed; the daily report's benchmark",
     )
     positions: list[SeedPosition] = Field(default=[])
 
@@ -343,6 +349,95 @@ class PaperOrder(BaseModel):
         if self.order_key != expected:
             raise ValueError(f"order_key must be {expected}")
         return self
+
+
+class PortfolioValue(BaseModel):
+    """One portfolio's value at a close, and its returns as fractions."""
+
+    value: float = Field(ge=0, description="USD value at the close")
+    day_return: float = Field(description="Against the previous report, or the start")
+    total_return: float = Field(description="Against the start value")
+
+
+class ReportFill(BaseModel):
+    """An order of the day that (partly) filled."""
+
+    side: Literal["BUY", "SELL"]
+    symbol: str
+    qty: float = Field(gt=0)
+    price: float = Field(gt=0, description="Average fill price")
+
+
+class ReportNotDone(BaseModel):
+    """A verdict of the day that led to no fill, and why."""
+
+    side: Literal["BUY", "SELL"]
+    symbol: str
+    status: str
+    reason: str = ""
+
+
+class DailyReport(BaseModel):
+    """One trading day's valuation of a paper-trading experiment.
+
+    Three portfolios start from the same value (the seed's mirrored shares at
+    their fill prices plus its cash): following the verdicts, leaving the seed
+    untouched, and the same value in SPY. One record per experiment and day.
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "experiment_id": "3f9c2a7e5b1d4c08",
+                "trade_date": "2026-11-16",
+                "start_value": 14042.96,
+                "verdicts": {
+                    "value": 14210.0,
+                    "day_return": 0.008,
+                    "total_return": 0.0119,
+                },
+                "untouched": {
+                    "value": 13950.0,
+                    "day_return": 0.005,
+                    "total_return": -0.0066,
+                },
+                "spy": {"value": 13880.0, "day_return": 0.004, "total_return": -0.0116},
+                "cash": 88.0,
+                "max_drawdown": -0.024,
+                "fills": [
+                    {"side": "BUY", "symbol": "NVDA", "qty": 19.0, "price": 126.0}
+                ],
+                "not_done": [
+                    {
+                        "side": "SELL",
+                        "symbol": "MU",
+                        "status": "skipped",
+                        "reason": "nothing held",
+                    }
+                ],
+                "prices": {"MU": 961.58, "NVDA": 126.4, "SPY": 682.1},
+            }
+        }
+    )
+
+    experiment_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    trade_date: str = Field(
+        pattern=r"^\d{4}-\d{2}-\d{2}$", description="US Eastern trading date"
+    )
+    start_value: float = Field(ge=0, description="Where all three portfolios began")
+    verdicts: PortfolioValue = Field(description="Following the verdicts")
+    untouched: PortfolioValue = Field(description="The seed, never traded")
+    spy: PortfolioValue | None = Field(
+        default=None, description="The start value in SPY; None without a SPY price"
+    )
+    cash: float = Field(description="The experiment's cash at the close")
+    max_drawdown: float = Field(
+        le=0, description="Largest fall from a previous high so far, as a fraction"
+    )
+    fills: list[ReportFill] = Field(default=[])
+    not_done: list[ReportNotDone] = Field(default=[])
+    prices: dict[str, float] = Field(default={}, description="Closing prices used")
+    valued_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class Preferences(BaseModel):
