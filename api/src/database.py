@@ -66,3 +66,7 @@ async def _ensure_indexes(db: AsyncIOMotorDatabase):
     await db.paper_orders.create_index(
         [("experiment_id", 1), ("order_key", 1)], unique=True
     )
+    # One valuation per experiment and trading day.
+    await db.daily_reports.create_index(
+        [("experiment_id", 1), ("trade_date", 1)], unique=True
+    )

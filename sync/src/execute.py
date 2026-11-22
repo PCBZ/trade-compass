@@ -79,6 +79,16 @@ class ExecutorApi(ExperimentApi):
         """Create or update one order record."""
         self._client.put("/experiment/orders", json=order).raise_for_status()
 
+    def reports(self) -> list[dict]:
+        """Every daily report of the current experiment, oldest first."""
+        r = self._client.get("/experiment/reports")
+        r.raise_for_status()
+        return r.json()
+
+    def put_report(self, report: dict) -> None:
+        """Store one day's report, replacing any earlier one for that day."""
+        self._client.put("/experiment/reports", json=report).raise_for_status()
+
     def verdicts(self, trade_date: str) -> list[dict]:
         """One day's stored verdicts."""
         r = self._client.get("/decisions", params={"trade_date": trade_date})
