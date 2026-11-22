@@ -167,11 +167,16 @@ def test_a_held_stock_without_a_close_stops_the_valuation():
         value_day(_experiment(), [], {"SPY": 505.0}, [], _DAY)
 
 
-def test_a_mirrored_position_without_a_fill_price_is_an_error():
+def test_every_mirrored_position_without_a_fill_price_is_named():
     bad = _experiment(
-        positions=[{"symbol": "MU", "mirrored_qty": 1, "fill_price": None}]
+        positions=[
+            {"symbol": "NVDA", "mirrored_qty": 2, "fill_price": None},
+            {"symbol": "MU", "mirrored_qty": 1, "fill_price": None},
+            {"symbol": "AMD", "mirrored_qty": 3, "fill_price": 150.0},
+            {"symbol": "OPT", "mirrored_qty": 0, "fill_price": None},  # not mirrored
+        ]
     )
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r"no fill price: MU, NVDA$"):
         start_value(bad)
 
 

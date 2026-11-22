@@ -37,13 +37,12 @@ class MissingPrice(Exception):
 
 def start_value(experiment: dict) -> float:
     """What all three portfolios began at: mirrored shares at fill, plus cash."""
-    total = experiment["seed_cash"]
-    for p in experiment["positions"]:
-        if p["mirrored_qty"]:
-            if not p["fill_price"]:
-                raise ValueError(f"{p['symbol']} was mirrored with no fill price")
-            total += p["mirrored_qty"] * p["fill_price"]
-    return round(total, 2)
+    mirrored = [p for p in experiment["positions"] if p["mirrored_qty"]]
+    missing = sorted(p["symbol"] for p in mirrored if not p["fill_price"])
+    if missing:
+        raise ValueError(f"Mirrored with no fill price: {', '.join(missing)}")
+    shares = sum(p["mirrored_qty"] * p["fill_price"] for p in mirrored)
+    return round(experiment["seed_cash"] + shares, 2)
 
 
 def untouched_holdings(experiment: dict) -> dict[str, float]:
