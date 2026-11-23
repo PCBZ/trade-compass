@@ -266,7 +266,12 @@ async def test_the_page_shows_the_day_and_the_history_up_to_it(endpoint, api):
     assert r.headers["x-robots-tag"] == "noindex"
     assert api["asked"] == [{"experiment_id": "exp1"}]
     page = r.text
-    assert "Mon 2026-11-16" in page
+    assert "Paper experiment <dt>2026-11-13 – Mon 2026-11-16</dt>" in page
+    assert (
+        "<tr><td>Total Return</td><td>+1.50%</td><td>-0.36%</td><td>-0.86%</td></tr>"
+        in page
+    )
+    assert "Apache" in page  # the template's attribution stays
     assert "<td>BUY</td><td>NVDA</td><td>19</td><td>$126.00</td>" in page
     assert "<td>MU</td><td>$98.25</td>" in page  # closing prices used
     assert "2026-11-13" in page
@@ -284,7 +289,8 @@ async def test_the_page_escapes_what_it_shows(endpoint, api):
 async def test_the_page_shows_spy_unavailable(endpoint, api):
     api["body"] = [_report(spy=None)]
     page = (await _page(endpoint)).text
-    assert "<tr><td>SPY</td><td>n/a</td>" in page
+    # SPY is the metrics table's last column.
+    assert "<tr><td>Value</td><td>$14,210</td><td>$13,950</td><td>n/a</td></tr>" in page
 
 
 @pytest.mark.parametrize(

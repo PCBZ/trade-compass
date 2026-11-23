@@ -205,7 +205,8 @@ def render_page(day: dict, history: list[dict]) -> str:
     return _pages.get_template("report.html").render(
         day=day,
         weekday=f"{date.fromisoformat(day['trade_date']):%a %Y-%m-%d}",
-        rows=[(label, day.get(key)) for key, label in _ROWS],
+        first_day=history[0]["trade_date"],
+        portfolios=[key for key, _ in _ROWS],
         prices=sorted(day.get("prices", {}).items()),
         history=list(reversed(history)),
         chart=_chart(day["start_value"], history),
