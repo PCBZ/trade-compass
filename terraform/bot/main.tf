@@ -8,6 +8,10 @@ terraform {
       source  = "hashicorp/null"
       version = "~> 3.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
+    }
     time = {
       source  = "hashicorp/time"
       version = "~> 0.11"
@@ -113,6 +117,26 @@ resource "google_secret_manager_secret_version" "gemini_api_key" {
   secret_data = var.gemini_api_key
 }
 
+# Signs the links to the daily report page. The bot is public (the Telegram
+# webhook needs it), so the page needs an unguessable link; replacing this key
+# (terraform apply -replace=random_password.report_link_key) revokes them all.
+resource "random_password" "report_link_key" {
+  length  = 48
+  special = false
+}
+
+resource "google_secret_manager_secret" "report_link_key" {
+  secret_id = "trade-compass-report-link-key"
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "report_link_key" {
+  secret      = google_secret_manager_secret.report_link_key.id
+  secret_data = random_password.report_link_key.result
+}
+
 # ── Grant bot SA access to all secrets ───────────────────────────────────────
 locals {
   bot_secrets = [
@@ -120,6 +144,7 @@ locals {
     google_secret_manager_secret.telegram_chat_id.id,
     google_secret_manager_secret.fmp_api_key.id,
     google_secret_manager_secret.gemini_api_key.id,
+    google_secret_manager_secret.report_link_key.id,
   ]
 }
 
@@ -195,6 +220,16 @@ resource "google_cloud_run_v2_service" "bot" {
       }
 
       env {
+        name = "REPORT_LINK_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.report_link_key.secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      env {
         name  = "API_URL"
         value = data.terraform_remote_state.cloud_run.outputs.service_url
       }
@@ -233,6 +268,7 @@ resource "google_cloud_run_v2_service" "bot" {
     google_secret_manager_secret_iam_member.bot_secret_access,
     google_secret_manager_secret_iam_member.bot_api_key_access,
     google_secret_manager_secret_version.gemini_api_key,
+    google_secret_manager_secret_version.report_link_key,
   ]
 }
 

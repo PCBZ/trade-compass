@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Paper experiment — {{ day.trade_date }}</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --axis: #c3c2b7;
+    --ring: rgba(11, 11, 11, 0.10);
+    --verdicts: #2a78d6;
+    --untouched: #eb6834;
+    --spy: #1baf7a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --page: #0d0d0d;
+      --surface: #1a1a19;
+      --ink: #f0efec;
+      --ink-2: #c3c2b7;
+      --muted: #898781;
+      --grid: #2c2c2a;
+      --axis: #383835;
+      --ring: rgba(255, 255, 255, 0.10);
+      --verdicts: #3987e5;
+      --untouched: #d95926;
+      --spy: #199e70;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 22px; margin: 0; }
+  h2 { font-size: 16px; margin: 32px 0 8px; }
+  .sub { color: var(--ink-2); margin: 2px 0 0; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--ring);
+    border-radius: 8px;
+    padding: 12px 16px;
+    overflow-x: auto;
+  }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { padding: 6px 8px; text-align: right; white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; padding-left: 0; }
+  th.text, td.text { text-align: left; white-space: normal; }
+  th { color: var(--muted); font-weight: 500; font-size: 13px; }
+  tbody tr + tr td { border-top: 1px solid var(--grid); }
+  .facts { display: flex; flex-wrap: wrap; gap: 4px 24px; margin-top: 12px; color: var(--ink-2); }
+  .facts b { color: var(--ink); font-weight: 600; }
+  .key { display: inline-block; width: 14px; height: 2px; vertical-align: middle; margin-right: 6px; border-radius: 1px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--ink-2); font-size: 13px; margin-bottom: 4px; }
+  .chart { position: relative; }
+  .chart svg { display: block; width: 100%; height: auto; }
+  .chart line.grid { stroke: var(--grid); stroke-width: 1; }
+  .chart line.base { stroke: var(--axis); stroke-width: 1; }
+  .chart line.cross { stroke: var(--muted); stroke-width: 1; visibility: hidden; }
+  /* SVG units: about 14px on a desktop card, 9px on a phone. */
+  .chart text { fill: var(--muted); font-size: 16px; }
+  .chart polyline { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .tip {
+    position: absolute; top: 8px; pointer-events: none; visibility: hidden;
+    background: var(--surface); border: 1px solid var(--ring); border-radius: 6px;
+    padding: 6px 10px; font-size: 12px; white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  }
+  .tip div { color: var(--ink-2); }
+  .tip b { color: var(--ink); }
+  .none { color: var(--ink-2); margin: 0; }
+  footer { color: var(--muted); font-size: 13px; margin-top: 32px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Paper experiment</h1>
+  <p class="sub">{{ weekday }} · at the close · experiment {{ day.experiment_id }}</p>
+
+  <h2>Portfolios</h2>
+  <div class="card">
+    <table>
+      <thead><tr><th>Portfolio</th><th>Value</th><th>Day</th><th>Total</th></tr></thead>
+      <tbody>
+      {% for label, p in rows %}
+        {% if p %}
+        <tr><td>{{ label }}</td><td>{{ p.value | money }}</td><td>{{ p.day_return | pct }}</td><td>{{ p.total_return | pct }}</td></tr>
+        {% else %}
+        <tr><td>{{ label }}</td><td>n/a</td><td></td><td></td></tr>
+        {% endif %}
+      {% endfor %}
+      </tbody>
+    </table>
+    <div class="facts">
+      <span>Start <b>{{ day.start_value | money(true) }}</b></span>
+      <span>Cash <b>{{ day.cash | money(true) }}</b></span>
+      <span>Largest drop <b>{{ day.max_drawdown | pct }}</b></span>
+    </div>
+  </div>
+
+  <h2>Value since the start</h2>
+  <div class="card">
+    <div class="legend">
+      <span><i class="key" style="background: var(--verdicts)"></i>Verdicts</span>
+      <span><i class="key" style="background: var(--untouched)"></i>Untouched</span>
+      <span><i class="key" style="background: var(--spy)"></i>SPY</span>
+    </div>
+    <div class="chart" id="chart">
+      <svg viewBox="0 0 {{ chart.width }} {{ chart.height }}" role="img"
+           aria-label="Value of the three portfolios from the start to {{ day.trade_date }}; the table below lists every day.">
+        {% for t in chart.ticks %}
+        <line class="grid" x1="{{ chart.left }}" x2="{{ chart.right }}" y1="{{ t.y }}" y2="{{ t.y }}"/>
+        <text x="{{ chart.left - 6 }}" y="{{ t.y + 5 }}" text-anchor="end">{{ t.label }}</text>
+        {% endfor %}
+        <line class="base" x1="{{ chart.left }}" x2="{{ chart.right }}" y1="{{ chart.bottom }}" y2="{{ chart.bottom }}"/>
+        <text x="{{ chart.left }}" y="{{ chart.height - 6 }}">{{ chart.first }}</text>
+        <text x="{{ chart.right }}" y="{{ chart.height - 6 }}" text-anchor="end">{{ chart.last }}</text>
+        <polyline points="{{ chart.lines.untouched }}" style="stroke: var(--untouched)"/>
+        <polyline points="{{ chart.lines.spy }}" style="stroke: var(--spy)"/>
+        <polyline points="{{ chart.lines.verdicts }}" style="stroke: var(--verdicts)"/>
+        <line class="cross" id="cross" y1="{{ chart.top }}" y2="{{ chart.bottom }}"/>
+      </svg>
+      <div class="tip" id="tip"></div>
+    </div>
+  </div>
+
+  <h2>The day</h2>
+  <div class="card">
+    {% if day.fills %}
+    <table>
+      <thead><tr><th>Filled</th><th>Stock</th><th>Shares</th><th>Price</th></tr></thead>
+      <tbody>
+      {% for f in day.fills %}
+        <tr><td>{{ f.side }}</td><td>{{ f.symbol }}</td><td>{{ '%g' | format(f.qty) }}</td><td>{{ f.price | money(true) }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+    {% if day.not_done %}
+    <table>
+      <thead><tr><th>Not done</th><th>Stock</th><th>Status</th><th class="text">Why</th></tr></thead>
+      <tbody>
+      {% for n in day.not_done %}
+        <tr><td>{{ n.side }}</td><td>{{ n.symbol }}</td><td>{{ n.status }}</td><td class="text">{{ n.reason or n.status }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+    {% if not day.fills and not day.not_done %}
+    <p class="none">No trades this day.</p>
+    {% endif %}
+  </div>
+
+  {% if prices %}
+  <h2>Closing prices used</h2>
+  <div class="card">
+    <table>
+      <thead><tr><th>Stock</th><th>Close</th></tr></thead>
+      <tbody>
+      {% for symbol, price in prices %}
+        <tr><td>{{ symbol }}</td><td>{{ price | money(true) }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <h2>Every day so far</h2>
+  <div class="card">
+    <table>
+      <thead><tr><th>Day</th><th>Verdicts</th><th>Untouched</th><th>SPY</th><th>Largest drop</th></tr></thead>
+      <tbody>
+      {% for r in history %}
+        <tr>
+          <td>{{ r.trade_date }}</td>
+          {% for key in ["verdicts", "untouched", "spy"] %}
+          <td>{% if r[key] %}{{ r[key].value | money }} ({{ r[key].total_return | pct }}){% else %}n/a{% endif %}</td>
+          {% endfor %}
+          <td>{{ r.max_drawdown | pct }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <footer>
+    All three portfolios start from the same value: the seed's mirrored shares at
+    their fill prices plus its cash. Values are at the close. Day returns are
+    against the previous report; totals are against the start.
+  </footer>
+</main>
+<script type="application/json" id="chart-data">{{ chart.data | safe }}</script>
+<script>
+(function () {
+  var data = JSON.parse(document.getElementById("chart-data").textContent);
+  var box = document.getElementById("chart");
+  var svg = box.querySelector("svg");
+  var cross = document.getElementById("cross");
+  var tip = document.getElementById("tip");
+  var names = { verdicts: "Verdicts", untouched: "Untouched", spy: "SPY" };
+  var money = function (v) {
+    return "$" + Math.round(v).toLocaleString("en-US");
+  };
+  function show(evt) {
+    var rect = svg.getBoundingClientRect();
+    var ux = (evt.clientX - rect.left) * {{ chart.width }} / rect.width;
+    var best = 0;
+    data.x.forEach(function (x, i) {
+      if (Math.abs(x - ux) < Math.abs(data.x[best] - ux)) best = i;
+    });
+    cross.setAttribute("x1", data.x[best]);
+    cross.setAttribute("x2", data.x[best]);
+    cross.style.visibility = "visible";
+    tip.textContent = "";
+    var head = document.createElement("div");
+    head.textContent = data.labels[best];
+    tip.appendChild(head);
+    Object.keys(names).forEach(function (key) {
+      var v = data.series[key][best];
+      var row = document.createElement("div");
+      var b = document.createElement("b");
+      b.textContent = v == null ? "n/a" : money(v);
+      row.appendChild(b);
+      row.appendChild(document.createTextNode(" " + names[key]));
+      tip.appendChild(row);
+    });
+    tip.style.visibility = "visible";
+    var px = data.x[best] * rect.width / {{ chart.width }};
+    var left = px + 12 + tip.offsetWidth > box.clientWidth ? px - 12 - tip.offsetWidth : px + 12;
+    tip.style.left = Math.max(0, left) + "px";
+  }
+  function hide() {
+    cross.style.visibility = "hidden";
+    tip.style.visibility = "hidden";
+  }
+  svg.addEventListener("pointermove", show);
+  svg.addEventListener("pointerleave", hide);
+})();
+</script>
+</body>
+</html>

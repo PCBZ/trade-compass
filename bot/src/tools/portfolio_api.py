@@ -81,6 +81,21 @@ async def get_report(trade_date: str) -> dict[str, Any] | None:
         return reports[0] if reports else None
 
 
+async def get_reports(experiment_id: str) -> list[dict[str, Any]]:
+    """GET /experiment/reports?experiment_id= — every report of one experiment,
+    oldest first. Empty when it has none.
+    """
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{_API_URL}/experiment/reports",
+            params={"experiment_id": experiment_id},
+            headers=_headers(),
+            timeout=10,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
 async def put_decision(record: dict[str, Any]) -> None:
     """PUT /decisions — store one scheduled verdict, replacing any earlier one
     for the same date, run and stock.

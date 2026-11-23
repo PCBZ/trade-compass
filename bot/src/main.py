@@ -1,10 +1,11 @@
 """trade-compass-bot entry point.
 
-FastAPI server with three endpoints:
+FastAPI server with these endpoints:
   GET  /health   — Cloud Run health check
   POST /webhook  — Telegram webhook (user messages)
   POST /push     — Cloud Scheduler active push notifications
-  POST /report   — Cloud Scheduler: the paper-trading experiment's daily report
+  POST /report   — Cloud Scheduler: the paper-trading experiment's daily summary
+  GET  /reports/{experiment_id}/{trade_date}?sig= — the full report it links to
 """
 
 from pathlib import Path
