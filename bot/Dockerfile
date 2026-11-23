@@ -3,8 +3,9 @@ FROM python:3.14-slim
 WORKDIR /app
 
 # Install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt requirements-nodeps.txt ./
+RUN pip install --no-cache-dir -r requirements.txt \
+ && pip install --no-cache-dir --no-deps -r requirements-nodeps.txt
 
 # Copy bot source as a package: /app/bot/
 COPY src/ ./bot/
