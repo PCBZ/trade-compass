@@ -12,13 +12,11 @@ Cloud Scheduler POSTs to /push with body: {"type": "pre_market"}
 TELEGRAM_CHAT_ID must be set in environment (your personal chat ID).
 """
 
-import os
-
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
-from telegram import Bot
 
 from ..graph.workflow import graph
+from .deps import Chat, telegram_chat
 from .handlers import _format_portfolio_summary, _get_initial_state
 
 push_router = APIRouter()
@@ -37,19 +35,14 @@ class PushRequest(BaseModel):
 
 
 @push_router.post("/push")
-async def push(request: Request, body: PushRequest) -> dict:
+async def push(
+    request: Request, body: PushRequest, chat: Chat = Depends(telegram_chat)
+) -> dict:
     """Triggered by Cloud Scheduler. Runs portfolio analysis and sends to Telegram."""
     if body.type not in _PUSH_TYPES:
         raise HTTPException(
             status_code=400,
             detail=f"Unknown push type '{body.type}'. Valid: {list(_PUSH_TYPES)}",
-        )
-
-    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
-    token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    if not chat_id or not token:
-        raise HTTPException(
-            status_code=500, detail="TELEGRAM_CHAT_ID or TELEGRAM_BOT_TOKEN not set"
         )
 
     state = await _get_initial_state(None, "portfolio", run_type=body.type)
@@ -62,7 +55,6 @@ async def push(request: Request, body: PushRequest) -> dict:
     header = _PUSH_TYPES[body.type]
     text = f"{header}\n\n{_format_portfolio_summary(summary)}"
 
-    bot = Bot(token=token)
-    await bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
+    await chat.bot.send_message(chat_id=chat.chat_id, text=text, parse_mode="HTML")
 
     return {"sent": True, "tickers": [v["ticker"] for v in summary["verdicts"]]}
