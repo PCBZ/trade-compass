@@ -163,7 +163,8 @@ def _chart(start_value: float, history: list[dict]) -> dict:
         series[key] = values
     known = [v for vs in series.values() for v in vs if v is not None]
     low, high = min(known), max(known)
-    pad = (high - low) * 0.08 or start_value * 0.01
+    # Never zero, or y() divides by zero on an all-zero report.
+    pad = (high - low) * 0.08 or start_value * 0.01 or 1.0
     low, high = low - pad, high + pad
 
     def x(i: int) -> float:
@@ -221,9 +222,9 @@ async def report_page(
 ) -> HTMLResponse:
     """The full report a summary links to. 404 without a valid signature."""
     key = _link_key()
-    if key is None or not hmac.compare_digest(
-        sig, link_signature(key, experiment_id, trade_date)
-    ):
+    # As bytes: compare_digest raises on a non-ASCII str, which would be a 500.
+    expected = link_signature(key, experiment_id, trade_date) if key else ""
+    if key is None or not hmac.compare_digest(sig.encode(), expected.encode()):
         raise HTTPException(status_code=404)
     try:
         reports = await get_reports(experiment_id)

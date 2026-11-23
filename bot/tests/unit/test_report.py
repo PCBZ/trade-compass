@@ -299,6 +299,7 @@ async def test_the_page_shows_spy_unavailable(endpoint, api):
         ("/reports/exp1/2026-11-16", ""),
         ("/reports/exp1/2026-11-16", "0" * 32),
         ("/reports/exp1/2026-11-16", _sig(experiment_id="exp2")),
+        ("/reports/exp1/2026-11-16", "é"),  # not ASCII: 404, not a crash
         ("/reports/exp2/2026-11-16", _sig()),  # another experiment's page
         ("/reports/exp1/2026-11-13", _sig()),  # another day's page
     ],
@@ -308,6 +309,12 @@ async def test_the_page_needs_its_own_signature(endpoint, api, path, sig):
     r = await _page(endpoint, path, sig)
     assert r.status_code == 404
     assert api["asked"] == []  # nothing is read for a bad link
+
+
+async def test_an_all_zero_report_still_draws(endpoint, api):
+    flat = {"value": 0.0, "day_return": 0.0, "total_return": 0.0}
+    api["body"] = [_report(start_value=0.0, verdicts=flat, untouched=flat, spy=None)]
+    assert (await _page(endpoint)).status_code == 200
 
 
 async def test_no_key_means_no_page(endpoint, api, monkeypatch):

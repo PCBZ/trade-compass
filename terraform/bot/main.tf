@@ -119,7 +119,8 @@ resource "google_secret_manager_secret_version" "gemini_api_key" {
 
 # Signs the links to the daily report page. The bot is public (the Telegram
 # webhook needs it), so the page needs an unguessable link; replacing this key
-# (terraform apply -replace=random_password.report_link_key) revokes them all.
+# (terraform apply -replace=random_password.report_link_key) revokes them all,
+# because the service reads this exact version (see REPORT_LINK_KEY below).
 resource "random_password" "report_link_key" {
   length  = 48
   special = false
@@ -223,8 +224,10 @@ resource "google_cloud_run_v2_service" "bot" {
         name = "REPORT_LINK_KEY"
         value_source {
           secret_key_ref {
-            secret  = google_secret_manager_secret.report_link_key.secret_id
-            version = "latest"
+            secret = google_secret_manager_secret.report_link_key.secret_id
+            # Pinned, not "latest": a new key then changes the service and rolls
+            # out a revision, so running instances stop accepting the old links.
+            version = google_secret_manager_secret_version.report_link_key.version
           }
         }
       }
