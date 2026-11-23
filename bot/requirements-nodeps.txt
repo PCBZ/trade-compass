@@ -1,0 +1,7 @@
+# Installed with `pip install --no-deps -r requirements-nodeps.txt`.
+#
+# The daily report page uses QuantStats' tearsheet template (quantstats/report.html,
+# Apache-2.0), read from the installed package as a data file. The library itself
+# is never imported, so its pandas/scipy/matplotlib/yfinance stack, a few hundred
+# MB on a service that scales to zero, is not installed.
+quantstats==0.0.86

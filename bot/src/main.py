@@ -1,9 +1,11 @@
 """trade-compass-bot entry point.
 
-FastAPI server with three endpoints:
+FastAPI server with these endpoints:
   GET  /health   — Cloud Run health check
   POST /webhook  — Telegram webhook (user messages)
   POST /push     — Cloud Scheduler active push notifications
+  POST /report   — Cloud Scheduler: the paper-trading experiment's daily summary
+  GET  /reports/{experiment_id}/{trade_date}?sig= — the full report it links to
 """
 
 from pathlib import Path
@@ -15,11 +17,13 @@ load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
 from .tg.bot import lifespan, webhook_router  # noqa: E402
 from .tg.push import push_router  # noqa: E402
+from .tg.report import report_router  # noqa: E402
 
 app = FastAPI(title="trade-compass-bot", lifespan=lifespan)
 
 app.include_router(webhook_router)
 app.include_router(push_router)
+app.include_router(report_router)
 
 
 @app.get("/health")

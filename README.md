@@ -152,6 +152,7 @@ freeze at the last push. Re-check `sudo crontab -l` after any VM recreate.
 ```bash
 python -m venv api/.venv && api/.venv/bin/pip install -r api/requirements-dev.txt
 python -m venv bot/.venv && bot/.venv/bin/pip install -r bot/requirements-dev.txt -r bot/requirements.txt
+bot/.venv/bin/pip install --no-deps -r bot/requirements-nodeps.txt   # the report page's QuantStats template only
 
 cd api && API_KEY=dev MONGODB_URI=mongodb://localhost:27017 uvicorn src.main:app --reload
 cd bot && uvicorn src.main:app --reload --port 8081   # needs bot/.env

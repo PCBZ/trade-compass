@@ -8,6 +8,10 @@ terraform {
       source  = "hashicorp/null"
       version = "~> 3.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
+    }
     time = {
       source  = "hashicorp/time"
       version = "~> 0.11"
@@ -113,6 +117,27 @@ resource "google_secret_manager_secret_version" "gemini_api_key" {
   secret_data = var.gemini_api_key
 }
 
+# Signs the links to the daily report page. The bot is public (the Telegram
+# webhook needs it), so the page needs an unguessable link; replacing this key
+# (terraform apply -replace=random_password.report_link_key) revokes them all,
+# because the service reads this exact version (see REPORT_LINK_KEY below).
+resource "random_password" "report_link_key" {
+  length  = 48
+  special = false
+}
+
+resource "google_secret_manager_secret" "report_link_key" {
+  secret_id = "trade-compass-report-link-key"
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "report_link_key" {
+  secret      = google_secret_manager_secret.report_link_key.id
+  secret_data = random_password.report_link_key.result
+}
+
 # ── Grant bot SA access to all secrets ───────────────────────────────────────
 locals {
   bot_secrets = [
@@ -120,6 +145,7 @@ locals {
     google_secret_manager_secret.telegram_chat_id.id,
     google_secret_manager_secret.fmp_api_key.id,
     google_secret_manager_secret.gemini_api_key.id,
+    google_secret_manager_secret.report_link_key.id,
   ]
 }
 
@@ -195,6 +221,18 @@ resource "google_cloud_run_v2_service" "bot" {
       }
 
       env {
+        name = "REPORT_LINK_KEY"
+        value_source {
+          secret_key_ref {
+            secret = google_secret_manager_secret.report_link_key.secret_id
+            # Pinned, not "latest": a new key then changes the service and rolls
+            # out a revision, so running instances stop accepting the old links.
+            version = google_secret_manager_secret_version.report_link_key.version
+          }
+        }
+      }
+
+      env {
         name  = "API_URL"
         value = data.terraform_remote_state.cloud_run.outputs.service_url
       }
@@ -233,6 +271,7 @@ resource "google_cloud_run_v2_service" "bot" {
     google_secret_manager_secret_iam_member.bot_secret_access,
     google_secret_manager_secret_iam_member.bot_api_key_access,
     google_secret_manager_secret_version.gemini_api_key,
+    google_secret_manager_secret_version.report_link_key,
   ]
 }
 
@@ -281,6 +320,24 @@ resource "google_cloud_scheduler_job" "push" {
     headers = {
       "Content-Type" = "application/json"
     }
+  }
+
+  depends_on = [google_cloud_run_v2_service.bot]
+}
+
+# The paper-trading experiment's daily report (#84). The VM values the day at
+# about 16:15 ET and stores it; this asks the bot to send it. Reading and
+# sending one record is quick, so a short deadline is enough.
+resource "google_cloud_scheduler_job" "report" {
+  name             = "trade-compass-report"
+  description      = "trade-compass paper-trading daily report"
+  schedule         = "30 16 * * 1-5"
+  time_zone        = "America/New_York"
+  attempt_deadline = "60s"
+
+  http_target {
+    http_method = "POST"
+    uri         = "${google_cloud_run_v2_service.bot.uri}/report"
   }
 
   depends_on = [google_cloud_run_v2_service.bot]

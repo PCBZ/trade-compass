@@ -22,6 +22,7 @@ import src.graph.workflow as workflow
 from src.agents.portfolio import portfolio_agent
 from src.state import AnalysisState, RunType
 from src.tg import handlers, push
+from src.tg.deps import Chat, telegram_chat
 
 
 class _Recorder:
@@ -52,12 +53,11 @@ def no_api(monkeypatch):
 
 @pytest.fixture
 def push_client(monkeypatch, no_api):
-    monkeypatch.setenv("TELEGRAM_CHAT_ID", "1")
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "t")
     recorder = _Recorder()  # empty summary: the push returns before Telegram
     monkeypatch.setattr(push, "graph", recorder)
     app = FastAPI()
     app.include_router(push.push_router)
+    app.dependency_overrides[telegram_chat] = lambda: Chat(bot=None, chat_id="1")
     client = httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     )
@@ -100,6 +100,22 @@ async def test_unknown_push_never_starts_an_analysis(push_client):
 
     assert r.status_code == 400
     assert recorder.states == []
+
+
+async def test_a_push_without_a_chat_id_is_a_500(monkeypatch):
+    monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
+    recorder = _Recorder()
+    monkeypatch.setattr(push, "graph", recorder)
+    app = FastAPI()
+    app.include_router(push.push_router)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        r = await client.post("/push", json={"type": "noon"})
+
+    assert r.status_code == 500
+    assert r.json()["detail"] == "TELEGRAM_CHAT_ID not set"
+    assert recorder.states == []  # no analysis without somewhere to send it
 
 
 # ── Telegram commands ─────────────────────────────────────────────────────────
